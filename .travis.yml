@@ -12,17 +12,17 @@ services:
 cache:
   apt: true
   directories:
-    - $HOME/perl5/perlbrew/perls/5.10
+    - $HOME/perl5/perlbrew/perls/5.14
 before_install:
-  - dzil authordeps | xargs cpanm
-  - export tmp=`mktemp --directory`
-  - dzil -Iinc build --in $tmp
-  - perl -MCPAN::Meta -e '$,="\n"; print CPAN::Meta->load_file("$ENV{tmp}/META.yml")->effective_prereqs->merged_requirements->required_modules;' | xargs cpanm
+  - dzil authordeps | xargs cpanm # build step
+  - export tmp=`mktemp --directory` # build step
+  - dzil -Iinc build --in $tmp # build step
+  - perl -MCPAN::Meta -e '$,="\n"; print CPAN::Meta->load_file("$ENV{tmp}/META.yml")->effective_prereqs->merged_requirements->required_modules;' | xargs cpanm # build step
 install:
-  - dzil listdeps | xargs cpanm
+  - dzil listdeps | xargs cpanm # build step
 #before_script:
 script:
-  - PERL5LIB="$PWD/inc" dzil test
+  - PERL5LIB="$PWD/inc" dzil test # build step
 #after_script:
 #after_success:
 #after_failure:
