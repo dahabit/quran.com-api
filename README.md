@@ -5,4 +5,4 @@ quran.com api
 
 url
 ---
-http://v2api.quran.com
+http://api.v2.quran.com
