@@ -12,6 +12,7 @@ sub startup {
     $r->get( '/' )->to( 'documentation#index' );
 
     $r->get( '/options/languages' )->to( controller => 'Options::Languages', action => 'list' );
+    $r->get( '/options/audio' )->to( controller => 'Options:Audio', action => 'list' );
 }
 
 sub setup {
