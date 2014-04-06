@@ -1,0 +1,17 @@
+---
+development:
+    dsn: dbi:Pg:dbname=quran_dev;host=dev.quran.com
+    username: quran_dev
+    password: dev_quran
+production:
+    dsn: dbi:Pg:dbname=quran
+default:
+    database: production
+    username: quran
+    password: quran
+    option:
+        AutoCommit: 1
+        RaiseError: 1
+        PrintError: 1
+        pg_bool_tf: 0
+        pg_enable_utf8: 1

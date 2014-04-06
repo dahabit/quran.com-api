@@ -1,0 +1,4 @@
+---
+dsn: dbi:Pg:dbname=quran_dev;host=dev.quran.com
+username: quran_dev
+password: dev_quran

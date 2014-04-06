@@ -1,0 +1,9 @@
+*.pid
+*.log
+*.bak
+*.sw*
+.*.*
+.*/
+*private
+*Private
+.*
