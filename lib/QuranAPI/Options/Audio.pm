@@ -1,4 +1,5 @@
 package QuranAPI::Options::Audio;
+use Mojo::Base 'Mojolicious::Controller';
 
 sub list {
     my $self = shift;
