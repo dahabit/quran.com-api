@@ -30,9 +30,9 @@ sub setup {
         } ) } for qw/debug error fatal info log warn/; # proxy over the base logger methods
     };
 
-    $self->plugin( 'Mojolicious::Plugin::YAMLConfig', {
+    $self->plugin( 'Mojolicious::Plugin::NourConfig', {
         -base => 'config'
-        , include_extra => 1
+        , -helpers => 1
     } );
 
     $self->secrets( [ $self->config->{application}{secret} ] );
@@ -61,7 +61,6 @@ sub setup {
     my $name = $self->db->query( qq|select current_database()| )->list;
     $self->debug( "using $name" );
     $self->debug( "under $mode" );
-    $self->debug( 'config', scalar $self->config );
 }
 
 1;
