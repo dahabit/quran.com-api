@@ -9,7 +9,7 @@ BEGIN {
 
     my @dir = splitdir( dirname( __FILE__ ) );
     push @dir, ".." while -e join '/', @dir and not -e join '/', @dir, 'lib';
-    unshift @INC, join '/', @dir, $_ for 'inc', 'lib';
+    unshift @INC, join '/', @dir, $_ for '.inc', 'lib';
 
     $ENV{MOJO_MODE}  ||= $ARGV[ -1 ] && $ARGV[ -1 ] eq 'production' ? 'production' : 'development';
     $ENV{DBIC_TRACE} ||= "1=". join '/', @dir, qw/log database.log/ if $ENV{MOJO_MODE} eq 'development';

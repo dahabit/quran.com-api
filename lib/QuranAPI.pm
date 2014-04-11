@@ -30,32 +30,14 @@ sub setup {
         } ) } for qw/debug error fatal info log warn/; # proxy over the base logger methods
     };
 
-    $self->plugin( 'Mojolicious::Plugin::NourConfig', {
+    $self->plugin( 'Mojolicious::Plugin::Nour::Config', {
         -base => 'config'
         , -helpers => 1
     } );
 
     $self->secrets( [ $self->config->{application}{secret} ] );
 
-    database_setup: {
-        $self->helper( _connect_db => sub {
-            my ( $c, @args ) = @_; $self->debug( '_connect_db' );
-            my $mode = $self->mode;
-            my $conf = $self->config( 'database' );
-            $conf->{default}{database} = $mode if exists $conf->{ $mode }; # we'll set the default db to "development" if we're in development mode
-            $self->_nour_db( new Nour::Database ( %{ $conf } ) );
-        } );
-        $self->helper( db => sub {
-            my ( $c, @args ) = @_;
-            $self->_connect_db unless $self->_nour_db;
-            return $self->_nour_db->switch_to( @args ) if @args;
-            return $self->_nour_db;
-        } );
-        $self->hook( before_dispatch => sub {
-            my ( $c, @args ) = @_;
-            $self->_connect_db unless $self->db->dbh->ping;
-        } );
-    };
+    $self->plugin( 'Mojolicious::Plugin::Nour::Database' );
 
     my $mode = $self->mode;
     my $name = $self->db->query( qq|select current_database()| )->list;
