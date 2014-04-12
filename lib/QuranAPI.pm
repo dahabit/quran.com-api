@@ -13,6 +13,7 @@ sub startup {
     $r->get( '/options/languages' )->to( controller => 'Options::Languages', action => 'list' );
     $r->get( '/options/audio' )->to( controller => 'Options::Audio', action => 'list' );
     $r->get( '/options/quran' )->to( controller => 'Options::Quran', action => 'list' );
+    $r->get( '/options/content' )->to( controller => 'Options::Content', action => 'list' );
 }
 
 sub setup {
