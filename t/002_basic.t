@@ -16,4 +16,12 @@ $t->get_ok( '/options/audio' )
     ->status_is( 200 )
     ->json_has( '/0/id' );
 
+$t->get_ok( '/options/content' )
+    ->status_is( 200 )
+    ->json_has( '/0/id' );
+
+$t->get_ok( '/options/quran' )
+    ->status_is( 200 )
+    ->json_has( '/0/id' );
+
 done_testing();

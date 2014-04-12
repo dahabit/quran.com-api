@@ -5,7 +5,7 @@ sub list {
     my $self = shift;
     my $list = $self->db->query( qq|
         select r.resource_id id
-             , r.sub_type type
+             , r.sub_type "type"
              , r.cardinality_type cardinality
              , r.slug
              , r.is_available
