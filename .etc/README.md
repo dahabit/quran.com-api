@@ -1,16 +1,20 @@
 To start
 --------
 
-`./script/quran_api prefork -P /tmp/quran_api.pid -l 'http://*:8080?reuse=1' &`
+See startup in main README.md (repo root dir):
+If it doesn't work, remove the '?reuse=1' and re-alias
 
 
-Zero downtime upgrade
----------------------
+Startup with zero downtime upgrade (?reuse=1)
+--------------------------------
 
-    export OLDPID=$( cat /tmp/quran_api.pid )
-    ./script/quran_api prefork -P /tmp/quran_api.pid -l 'http://*:8080?reuse=1' &
-    kill -s TERM $OLDPID
+    $ source ./.etc/bash_function # this dir
+    $ quran-api-up
 
+TODO
+----
+
+- write startup scripts for gentoo and one for ubuntu/debian
 
 Lighttpd
 --------

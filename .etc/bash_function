@@ -1,0 +1,18 @@
+function quran-api-up() {
+    if [[ -e /tmp/quran-api.pid ]]; then
+        echo "export";
+        export PID=$( cat /tmp/quran-api.pid );
+    fi;
+    echo "start";
+    bash -i -c './script/quran-api prefork -P /tmp/quran-api.pid -l "http://*:8765?reuse=1" &';
+    if [[ -n $PID ]]; then
+        echo "kill"; kill -s TERM $PID;
+        unset PID;
+    fi;
+}
+
+function quran-api-down() {
+    if [[ -e /tmp/quran-api.pid ]]; then
+        kill -s TERM $( cat /tmp/quran-api.pid );
+    fi;
+}

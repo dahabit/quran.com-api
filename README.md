@@ -7,8 +7,8 @@ url
 ---
 http://api.v2.quran.com
 
-building / setup
-----------------
+setup
+-----
 
 - build is automated on travis-ci http://travis-ci.org/quran/quran.com-api
 - therefore, just follow the steps in .travis.yml `cat .travis.yml | grep "build step"`
