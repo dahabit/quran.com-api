@@ -1,0 +1,25 @@
+package QuranAPI::Options::Quran;
+use Mojo::Base 'Mojolicious::Controller';
+
+sub list {
+    my $self = shift;
+    my $list = $self->db->query( qq|
+        select r.resource_id id
+             , r.type
+             , r.sub_type
+             , r.cardinality_type
+             , r.language_code
+             , r.slug
+             , r.is_available
+             , r.description
+             , r.name
+          from content.resource r
+          join content.resource_api_version v using ( resource_id )
+         where r.type = 'quran'
+           and v.v2_is_enabled
+         order by r.resource_id
+    | )->hashes;
+    $self->render( json => $list );
+}
+
+1;
