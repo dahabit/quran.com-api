@@ -8,12 +8,16 @@ sub startup {
 
     my $r = $self->routes;
 
-    $r->get( '/' )->to( 'documentation#index' );
-
     $r->get( '/options/languages' )->to( controller => 'Options::Languages', action => 'list' );
     $r->get( '/options/audio' )->to( controller => 'Options::Audio', action => 'list' );
     $r->get( '/options/quran' )->to( controller => 'Options::Quran', action => 'list' );
     $r->get( '/options/content' )->to( controller => 'Options::Content', action => 'list' );
+
+    $self->documentation( -root => '/docs' );
+    $r->any( '/' )->to( cb => sub {
+        my $c = shift;
+        $c->redirect_to( $self->url_for( 'documentation' ) );
+    } );
 }
 
 sub setup {
@@ -27,6 +31,7 @@ sub setup {
         , -silence => 1
     } );
     $self->plugin( 'Mojolicious::Plugin::Nour::Database' );
+    $self->plugin( 'Mojolicious::Plugin::Documentation' );
 
     $self->secrets( [ $self->config->{application}{secret} ] );
 
@@ -50,5 +55,7 @@ sub setup {
 =head2 /options
 
 =head3 /options/languages
+
+foo
 
 =cut

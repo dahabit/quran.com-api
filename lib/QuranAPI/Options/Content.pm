@@ -22,3 +22,11 @@ sub list {
 }
 
 1;
+
+=head1 cardinality
+
+each content item (e.g. a translation item) corresponds to a single ayah.
+each content item (e.g. a tafsir item) corresponds to multiple ayahs, i.e. a range of ayat;
+each content item (e.g. a tajweed image) corresponds to exactly one word (or glyph item, like a sajdah) in a single ayah;
+
+=cut
