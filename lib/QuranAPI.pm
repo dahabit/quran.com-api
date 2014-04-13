@@ -76,6 +76,11 @@ sub startup {
         $validation->input( $input );
         $validation->required( 'page' )->in( 1..604 );
         return undef if $validation->has_error;
+
+        my $output = $validation->output;
+        my $stash = $c->stash;
+           $stash->{ $_ } = $output->{ $_ } for keys %{ $output };
+
         return 1;
     } );
 
