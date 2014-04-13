@@ -13,8 +13,74 @@ sub startup {
     $r->get( '/options/quran' )->to( controller => 'Options::Quran', action => 'list' );
     $r->get( '/options/content' )->to( controller => 'Options::Content', action => 'list' );
     $r->get( '/options/default' )->to( controller => 'Options::Default', action => 'hash' );
-    $r->get( '/bucket/ayat/:surah/:range' )->to( controller => 'Bucket::Ayat', action => 'list' );
-    $r->get( '/bucket/page/:page' )->to( controller => 'Bucket::Page', action => 'list' );
+
+    $r->add_condition( _valid_ayat => sub {
+        my ( $route, $c, $input, $validation ) = @_;
+        my %args = $c->args;
+        my %input = ( map { $_ => $input->{ $_ } } grep { defined $input->{ $_ } } keys %{ $input } );
+           %input = ( %input, %args, %input ); # a bit of bloat that let's query-string and json vars override captures, e.g. /bucket/ayat/2?range=3-4 is the same as /bucket/ayat/2/3-4. useful for `POST /bucket/ayat => json => { surah => 2, range => [ 3, 4 ] }`
+
+        $input->{ $_ } = $input{ $_ } for keys %input;
+        $input->{surah} //= 0;
+
+        # TODO: keeping around the debugs in comments for if something comes up again
+        #$c->debug( 'input 1', $input );
+
+        $validation->input( $input );
+        $validation->required( 'surah' )->in( 1..114 );
+        return undef if $validation->has_error;
+
+        $input = $validation->input;
+
+        my $range = $c->db->query( qq|
+            select min( ayah_num ) "min"
+                 , max( ayah_num ) "max"
+              from quran.ayah
+             where surah_id = ?
+        |, $input->{surah} )->hash; # TODO: db calls like this need to be cached
+
+        $input->{range} //= [ $range->{min}, $range->{max} ];
+        $input->{range} = [ $1, $2 ] if not ref $input->{range}
+            and $input->{range} =~ qr/^(\d+)(?:\W+(\d+))?$/;
+
+        $validation->required( 'range' );
+
+        return undef
+        unless ref $input->{range} eq 'ARRAY'
+           and $input->{range}[0] >= $range->{min}
+           and $input->{range}[0] <= $range->{max};
+        $input->{range}[1] //= $input->{range}[0];
+        return undef
+        unless $input->{range}[1] >= $input->{range}[0]
+           and $input->{range}[1] >= $range->{min}
+           and $input->{range}[1] <= $range->{max};
+
+        my $output = $validation->output;
+        my $stash = $c->stash;
+           $stash->{ $_ } = $output->{ $_ } for keys %{ $output };
+
+        #$c->debug( 'input 2', $input );
+        #$c->debug( 'stash 2', $stash );
+        return 1;
+    } );
+
+    $r->add_condition( _valid_page => sub {
+        my ( $route, $c, $input, $validation ) = @_;
+        my %args = $c->args;
+        my %input = ( map { $_ => $input->{ $_ } } grep { defined $input->{ $_ } } keys %{ $input } );
+           %input = ( %input, %args, %input ); # a bit of bloat that let's query-string and json vars override captures, e.g. /bucket/ayat/2?range=3-4 is the same as /bucket/ayat/2/3-4. useful for `POST /bucket/ayat => json => { surah => 2, range => [ 3, 4 ] }`
+
+        $input->{ $_ } = $input{ $_ } for keys %input;
+        $input->{page} //= 0;
+
+        $validation->input( $input );
+        $validation->required( 'page' )->in( 1..604 );
+        return undef if $validation->has_error;
+        return 1;
+    } );
+
+    $r->get( '/bucket/ayat/:surah/:range' )->over( _valid_ayat => $self->validator->validation )->to( controller => 'Bucket::Ayat', action => 'list', surah => undef, range => undef );
+    $r->get( '/bucket/page/:page' )->over( _valid_page => $self->validator->validation )->to( controller => 'Bucket::Page', action => 'list', page => undef );
 
     $self->documentation( -root => '/docs' );
     $r->any( '/' )->to( cb => sub {
