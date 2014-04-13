@@ -8,10 +8,13 @@ sub startup {
 
     my $r = $self->routes;
 
-    $r->get( '/options/languages' )->to( controller => 'Options::Languages', action => 'list' );
+    $r->get( '/options/language' )->to( controller => 'Options::Language', action => 'list' );
     $r->get( '/options/audio' )->to( controller => 'Options::Audio', action => 'list' );
     $r->get( '/options/quran' )->to( controller => 'Options::Quran', action => 'list' );
     $r->get( '/options/content' )->to( controller => 'Options::Content', action => 'list' );
+    $r->get( '/options/default' )->to( controller => 'Options::Default', action => 'hash' );
+    $r->get( '/bucket/ayat/:surah/:range' )->to( controller => 'Bucket::Ayat', action => 'list' );
+    $r->get( '/bucket/page/:page' )->to( controller => 'Bucket::Page', action => 'list' );
 
     $self->documentation( -root => '/docs' );
     $r->any( '/' )->to( cb => sub {
@@ -44,18 +47,36 @@ sub setup {
     };
 }
 
+# ABSTRACT: Quran API v2
 1;
-
-# ABSTRACT: v2 quran api
+__END__
 
 =encoding utf8
 
-=head1 QuranAPI
+=head1 USAGE
 
-=head2 /options
+v2 quran api; documentation is very poor and pretty much non-existent atm. be patient.
 
-=head3 /options/languages
+=head2 /search
 
-foo
+=head2 /bucket/ayat/:surah/:range
+
+=head2 /bucket/page/:page
+
+=head2 /options/default
+
+=head2 /options/quran
+
+=head2 /options/content
+
+=head2 /options/language
+
+=head2 /options/audio
+
+=head2 /info/ayah
+
+=head2 /info/page
+
+=head2 /info/surah
 
 =cut

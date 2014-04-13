@@ -1,4 +1,4 @@
-package QuranAPI::Options::Languages;
+package QuranAPI::Options::Language;
 use Mojo::Base 'Mojolicious::Controller';
 
 sub list {
@@ -9,7 +9,10 @@ sub list {
              , l.english name_english
              , l.direction
           from content.resource r
+          join content.resource_api_version v using ( resource_id )
           join i18n.language l using ( language_code )
+         where v.v2_is_enabled
+           and r.is_available
          group by l.language_code, l.unicode, l.english, l.direction
          order by l.language_code
     | )->hashes;
