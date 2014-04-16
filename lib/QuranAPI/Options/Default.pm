@@ -3,7 +3,8 @@ use Mojo::Base 'Mojolicious::Controller';
 
 sub hash {
     my $self = shift;
-    $self->render( json => $self->defaults );
+    my $hash = $self->defaults;
+    $self->render( json => $hash );
 }
 
 sub defaults {
@@ -40,7 +41,7 @@ sub defaults {
          limit 1
     |, $hash{language} )->list;
 
-    return \%hash;
+    return wantarray ? %hash : \%hash;
 }
 
 # ABSTRACT: Returns suggested default parameters to send to the /ayat endpoint.
