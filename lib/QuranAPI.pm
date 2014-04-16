@@ -36,7 +36,7 @@ sub startup {
              where surah_id = ?
         |, $input->{surah} )->hash; # TODO: db calls like this need to be cached
 
-        $input->{range} //= [ $range->{min}, $range->{max} ];
+        $input->{range} //= [ $range->{min}, $range->{max} ]; # TODO: limits on max range if the calls take too long on 1..286 for example
         $input->{range} = [ $1, $2 ] if not ref $input->{range}
             and $input->{range} =~ qr/^(\d+)(?:\W+(\d+))?$/;
 
@@ -97,8 +97,8 @@ sub setup {
     } );
     $self->plugin( 'Mojolicious::Plugin::Nour::Database' );
     $self->plugin( 'Mojolicious::Plugin::Documentation' );
-    $self->plugin( 'Mojolicious::Plugin::CacheMoney' );
     $self->plugin( 'Mojolicious::Plugin::DumpyLog' );
+    $self->plugin( 'Mojolicious::Plugin::CacheMoney' );
     $self->plugin( 'Mojolicious::Plugin::Args' );
 
     $self->secrets( [ $self->config->{application}{secret} ] );

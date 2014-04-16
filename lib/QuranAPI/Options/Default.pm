@@ -22,7 +22,7 @@ sub defaults {
           from content.resource r
          where r.type = 'quran'
            and r.sub_type = 'text'
-           and r.slug = 'ayah_text_minimal'
+           and r.slug = 'ayah_text_regular'
     | )->list;
 
     $hash{language} = 'en';
