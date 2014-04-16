@@ -3,6 +3,11 @@ use Mojo::Base 'Mojolicious::Controller';
 
 sub hash {
     my $self = shift;
+    $self->render( json => $self->defaults );
+}
+
+sub defaults {
+    my $self = shift;
     my %hash;
 
     $hash{audio} = $self->db->query( qq|
@@ -35,7 +40,7 @@ sub hash {
          limit 1
     |, $hash{language} )->list;
 
-    $self->render( json => \%hash );
+    return \%hash;
 }
 
 # ABSTRACT: Returns suggested default parameters to send to the /ayat endpoint.

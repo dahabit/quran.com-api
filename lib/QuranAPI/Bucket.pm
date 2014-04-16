@@ -1,10 +1,14 @@
 package QuranAPI::Bucket;
-use Mojo::Base 'Mojolicious::Controller';
+use Mojo::Base 'QuranAPI::Options::Default';
 
-sub some_shared_routine {
+sub keys_for_ayat {
+    my $self = shift;
+    my ( $stash, %args ) = ( $self->stash, @_ );
 }
 
-sub another_shared_process {
+sub keys_for_page {
+    my $self = shift;
+    my ( $stash, %args ) = ( $self->stash, @_ );
 }
 
 # ABSTRACT: DNR principle

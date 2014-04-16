@@ -23,9 +23,6 @@ sub startup {
         $input->{ $_ } = $input{ $_ } for keys %input;
         $input->{surah} //= 0;
 
-        # TODO: keeping around the debugs in comments for if something comes up again
-        #$c->debug( 'input 1', $input );
-
         $validation->input( $input );
         $validation->required( 'surah' )->in( 1..114 );
         return undef if $validation->has_error;
@@ -57,10 +54,7 @@ sub startup {
 
         my $output = $validation->output;
         my $stash = $c->stash;
-           $stash->{ $_ } = $output->{ $_ } for keys %{ $output };
-
-        #$c->debug( 'input 2', $input );
-        #$c->debug( 'stash 2', $stash );
+           $stash->{args}{ $_ } = $output->{ $_ } for keys %{ $output };
         return 1;
     } );
 
@@ -79,13 +73,12 @@ sub startup {
 
         my $output = $validation->output;
         my $stash = $c->stash;
-           $stash->{ $_ } = $output->{ $_ } for keys %{ $output };
-
+           $stash->{args}{ $_ } = $output->{ $_ } for keys %{ $output };
         return 1;
     } );
 
-    $r->get( '/bucket/ayat/:surah/:range' )->over( _valid_ayat => $self->validator->validation )->to( controller => 'Bucket::Ayat', action => 'list', surah => undef, range => undef );
-    $r->get( '/bucket/page/:page' )->over( _valid_page => $self->validator->validation )->to( controller => 'Bucket::Page', action => 'list', page => undef );
+    $r->any( '/bucket/ayat/:surah/:range' )->over( _valid_ayat => $self->validator->validation )->to( controller => 'Bucket::Ayat', action => 'list', surah => undef, range => undef );
+    $r->any( '/bucket/page/:page' )->over( _valid_page => $self->validator->validation )->to( controller => 'Bucket::Page', action => 'list', page => undef );
 
     $self->documentation( -root => '/docs' );
     $r->any( '/' )->to( cb => sub {
@@ -97,8 +90,6 @@ sub startup {
 sub setup {
     my $self = shift;
 
-    $self->plugin( 'Mojolicious::Plugin::DumpyLog' );
-    $self->plugin( 'Mojolicious::Plugin::Args' );
     $self->plugin( 'Mojolicious::Plugin::Nour::Config', {
         -base => 'config'
         , -helpers => 1
@@ -106,15 +97,28 @@ sub setup {
     } );
     $self->plugin( 'Mojolicious::Plugin::Nour::Database' );
     $self->plugin( 'Mojolicious::Plugin::Documentation' );
+    $self->plugin( 'Mojolicious::Plugin::CacheMoney' );
+    $self->plugin( 'Mojolicious::Plugin::DumpyLog' );
+    $self->plugin( 'Mojolicious::Plugin::Args' );
 
     $self->secrets( [ $self->config->{application}{secret} ] );
+
+    CORS: {
+        $self->hook( before_dispatch => sub {
+            my $c = shift;
+            $c->res->headers->header( 'Access-Control-Allow-Origin' => '*' );
+            $c->res->headers->header( 'Access-Control-Allow-Methods' => 'POST, GET, PUT, DELETE, OPTIONS' );
+            $c->res->headers->header( 'Access-Control-Max-Age' => 3600 );
+            $c->res->headers->header( 'Access-Control-Allow-Headers' => 'X-Requested-With' );
+        } );
+    };
 
     setup_assurance: {
         my $mode = $self->mode;
         my $name = $self->db->query( qq|select current_database()| )->list;
-        $self->debug( "using $name" );
-        $self->debug( "under $mode" );
-        $self->debug( "config", scalar $self->config );
+        $self->info( "using $name" );
+        $self->info( "under $mode" );
+        $self->info( "config", scalar $self->config );
     };
 }
 
