@@ -100,7 +100,6 @@ sub list {
         ,defs => \%defs
         ,vars => \%vars
         ,keys => \@keys
-        ,foo => 'bar'
         ,list => \@list
     } );
 }
