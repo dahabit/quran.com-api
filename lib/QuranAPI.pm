@@ -113,6 +113,15 @@ sub setup {
         } );
     };
 
+    charset_encoding: {
+        $self->hook( after_render => sub {
+            my ( $c, $out, $format ) = @_;
+            $c->res->headers->header(
+                'Content-Type' => 'application/json; charset=utf-8'
+            ) if $format eq 'json';
+        } );
+    };
+
     setup_assurance: {
         my $mode = $self->mode;
         my $name = $self->db->query( qq|select current_database()| )->list;
