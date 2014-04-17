@@ -8,7 +8,7 @@ sub list {
     my ( @keys, @list );
 
     %args = $self->args;
-    %defs = $self->defaults; # {"quran":211,"content":217,"language":"en","audio":6}
+    %defs = $self->_options->default; # {"quran":211,"content":217,"language":"en","audio":6}
 
     $vars{ $_ } = $args{ $_ } for qw/page/;
     $vars{ $_ } = $args{ $_ } || $defs{ $_ } for qw/quran content audio language/; # setting it to defaults is temporary for experimenting--TODO validation, and TODO handle string or array on quran, content
