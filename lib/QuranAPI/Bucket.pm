@@ -1,35 +1,37 @@
 package QuranAPI::Bucket;
-use Mojo::Base 'QuranAPI::Options::Default';
+use Mojo::Base 'Mojolicious::Controller';
 use List::AllUtils qw/uniq/;
 
 sub keys_for_ayat {
     my $self = shift;
     my ( $stash, %args ) = ( $self->stash, @_ );
-
-    my @keys = $self->db->query( qq|
-        select a.ayah_key
-          from quran.ayah a
-         where a.surah_id = ?
-           and a.ayah_num >= ?
-           and a.ayah_num <= ?
-         order by a.surah_id, a.ayah_num
-    |, $args{surah}, $args{range}[0], $args{range}[1] )->flat;
-
-    return wantarray ? @keys : \@keys;
+    my $keys = $self->cache( join( '.', qw/bucket keys for ayat/, $args{surah}, $args{range}[0], $args{range}[1] ) => sub {
+        my @keys = $self->db->query( qq|
+            select a.ayah_key
+              from quran.ayah a
+             where a.surah_id = ?
+               and a.ayah_num >= ?
+               and a.ayah_num <= ?
+             order by a.surah_id, a.ayah_num
+        |, $args{surah}, $args{range}[0], $args{range}[1] )->flat;
+        return \@keys;
+    } );
+    return wantarray ? @{ $keys } : $keys;
 }
 
 sub keys_for_page {
     my $self = shift;
     my ( $stash, %args ) = ( $self->stash, @_ );
-
-    my @keys = $self->db->query( qq|
-        select a.ayah_key
-          from quran.ayah a
-         where a.page_num = ?
-         order by a.surah_id, a.ayah_num
-    |, $args{page} )->flat;
-
-    return wantarray ? @keys : \@keys;
+    my $keys = $self->cache( join( '.', qw/bucket keys for page/, $args{page} ) => sub {
+        my @keys = $self->db->query( qq|
+            select a.ayah_key
+              from quran.ayah a
+             where a.page_num = ?
+             order by a.surah_id, a.ayah_num
+        |, $args{page} )->flat;
+        return \@keys;
+    } );
+    return wantarray ? @{ $keys } : $keys;
 }
 
 sub bucket {
@@ -51,15 +53,18 @@ sub bucket {
     }
 
     quran: { next unless defined $vars{quran};
-        $rows{ 'resource.quran' } = $self->db->query( qq|
-            select r.*
-              from content.resource r
-              join content.resource_api_version v using ( resource_id )
-             where r.is_available
-               and v.v2_is_enabled
-               and r.type = 'quran'
-               and r.resource_id in ( ? )
-        |, $vars{quran} )->hash;
+        $rows{ 'resource.quran' } = $self->cache( join( '.', qw/resource quran/, $vars{quran} ) => sub {
+            my $hash = $self->db->query( qq|
+                select r.*
+                  from content.resource r
+                  join content.resource_api_version v using ( resource_id )
+                 where r.is_available
+                   and v.v2_is_enabled
+                   and r.type = 'quran'
+                   and r.resource_id in ( ? )
+            |, $vars{quran} )->hash;
+            return $hash;
+        } );
 
         if ( my $row = $rows{ 'resource.quran' } ) {
             my $join;
@@ -71,7 +76,7 @@ sub bucket {
             }
 
             if ( $row->{cardinality_type} eq '1_word' ) { # TODO
-                $rows{ 'result.quran' } = $self->cache( join( '', '1_word', $vars{language}, $row->{resource_id}, @keys ) => sub {
+                $rows{ 'result.quran' } = $self->cache( join( '.', '1_word', $vars{language}, $row->{resource_id}, @keys ) => sub {
                     my %rows;
                     my %cut;
                     if ( $row->{slug} eq 'word_font' ) {
@@ -138,19 +143,23 @@ sub bucket {
                 }
             }
             elsif ( $row->{cardinality_type} eq '1_ayah' ) {
-                my @result = $self->db->query( qq|
-                    select c.*
-                      from content.resource r $join
-                      join quran.ayah a using ( ayah_key )
-                     where r.resource_id = ?
-                       and a.ayah_key in ( |.( join ', ', map { '?' } @keys ).qq| )
-                     order by a.surah_id, a.ayah_num
-                |, $row->{resource_id}, @keys )->hashes;
-                for my $result ( @result ) {
-                    my $resource_id = delete $result->{resource_id};
-                    my $ayah_key    = delete $result->{ayah_key};
-                    $rows{ 'result.quran' }{ $ayah_key } = $result;
-                }
+                $rows{ 'result.quran' } = $self->cache( join( '.', '1_ayah', $row->{resource_id}, @keys ) => sub {
+                    my %rows;
+                    my @result = $self->db->query( qq|
+                        select c.*
+                          from content.resource r $join
+                          join quran.ayah a using ( ayah_key )
+                         where r.resource_id = ?
+                           and a.ayah_key in ( |.( join ', ', map { '?' } @keys ).qq| )
+                         order by a.surah_id, a.ayah_num
+                    |, $row->{resource_id}, @keys )->hashes;
+                    for my $result ( @result ) {
+                        my $resource_id = delete $result->{resource_id};
+                        my $ayah_key    = delete $result->{ayah_key};
+                        $rows{ $ayah_key } = $result;
+                    }
+                    return \%rows;
+                } );
                 for my $i ( 0 .. $#keys ) {
                     my $ayah_key = $keys[ $i ];
                     my $hash_ref = $list[ $i ];

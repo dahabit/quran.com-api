@@ -8,11 +8,23 @@ sub startup {
 
     my $r = $self->routes;
 
-    $r->get( '/options/language' )->to( controller => 'Options::Language', action => 'list' );
-    $r->get( '/options/audio' )->to( controller => 'Options::Audio', action => 'list' );
-    $r->get( '/options/quran' )->to( controller => 'Options::Quran', action => 'list' );
-    $r->get( '/options/content' )->to( controller => 'Options::Content', action => 'list' );
-    $r->get( '/options/default' )->to( controller => 'Options::Default', action => 'hash' );
+    options: {
+        $r->get( '/options/default' )->to( cb => sub {
+            my $c = shift; $c->render( json => scalar $c->_options->default );
+        } );
+        $r->get( '/options/language' )->to( cb => sub {
+            my $c = shift; $c->render( json => scalar $c->_options->language );
+        } );
+        $r->get( '/options/quran' )->to( cb => sub {
+            my $c = shift; $c->render( json => scalar $c->_options->quran );
+        } );
+        $r->get( '/options/content' )->to( cb => sub {
+            my $c = shift; $c->render( json => scalar $c->_options->content );
+        } );
+        $r->get( '/options/audio' )->to( cb => sub {
+            my $c = shift; $c->render( json => scalar $c->_options->audio );
+        } );
+    };
 
     $r->add_condition( _valid_ayat => sub {
         my ( $route, $c, $input, $validation ) = @_;
@@ -29,12 +41,15 @@ sub startup {
 
         $input = $validation->input;
 
-        my $range = $c->db->query( qq|
-            select min( ayah_num ) "min"
-                 , max( ayah_num ) "max"
-              from quran.ayah
-             where surah_id = ?
-        |, $input->{surah} )->hash; # TODO: db calls like this need to be cached
+        my $range = $self->cache( join( '.', qw/min max/, $input->{surah} ) => sub {
+            my $hash = $c->db->query( qq|
+                select min( ayah_num ) "min"
+                     , max( ayah_num ) "max"
+                  from quran.ayah
+                 where surah_id = ?
+            |, $input->{surah} )->hash; # TODO: db calls like this need to be cached
+            return $hash;
+        } );
 
         $input->{range} //= [ $range->{min}, $range->{max} ]; # TODO: limits on max range if the calls take too long on 1..286 for example
         $input->{range} = [ $1, $2 ] if not ref $input->{range}
@@ -100,27 +115,12 @@ sub setup {
     $self->plugin( 'Mojolicious::Plugin::DumpyLog' );
     $self->plugin( 'Mojolicious::Plugin::CacheMoney' );
     $self->plugin( 'Mojolicious::Plugin::Args' );
+    $self->plugin( 'Mojolicious::Plugin::UTF8' );
+    $self->plugin( 'Mojolicious::Plugin::CORS' );
+
+    $self->plugin( 'QuranAPI::Options' );
 
     $self->secrets( [ $self->config->{application}{secret} ] );
-
-    CORS: {
-        $self->hook( before_dispatch => sub {
-            my $c = shift;
-            $c->res->headers->header( 'Access-Control-Allow-Origin' => '*' );
-            $c->res->headers->header( 'Access-Control-Allow-Methods' => 'POST, GET, PUT, DELETE, OPTIONS' );
-            $c->res->headers->header( 'Access-Control-Max-Age' => 3600 );
-            $c->res->headers->header( 'Access-Control-Allow-Headers' => 'X-Requested-With' );
-        } );
-    };
-
-    charset_encoding: {
-        $self->hook( after_render => sub {
-            my ( $c, $out, $format ) = @_;
-            $c->res->headers->header(
-                'Content-Type' => 'application/json; charset=utf-8'
-            ) if $format eq 'json';
-        } );
-    };
 
     setup_assurance: {
         my $mode = $self->mode;
