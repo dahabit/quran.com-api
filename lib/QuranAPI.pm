@@ -26,6 +26,32 @@ sub startup {
         } );
     };
 
+    $r->any( $_ )->to( controller => 'Bucket::Ayat', action => 'list' )
+        for qw|/bucket/ayat/:surah/:range /bucket/ayat/:surah /bucket/ayat|;
+
+    $r->any( $_ )->to( controller => 'Bucket::Page', action => 'list' )
+        for qw|/bucket/page/:page /bucket/page|;
+=cut
+    # TODO: test the speed of this after caching is proper
+    use JSON::XS;
+    $self->renderer->add_handler( json => sub {
+        my ($renderer, $c, $output, $options) = @_;
+
+        $self->debug( 'json handler' );
+        $self->debug( 'options', $options );
+        $$output = JSON::XS->new
+            ->allow_blessed
+            ->allow_nonref
+            ->convert_blessed
+            ->relaxed
+            ->utf8
+            ->pretty( 0 )
+            ->encode( $options->{json} );
+
+        return 1;
+    } );
+
+    # TODO: validation has to happen in the controller, no pre-route validation because of mojolicious rendering bug
     $r->add_condition( _valid_ayat => sub {
         my ( $route, $c, $input, $validation ) = @_;
         my %args = $c->args;
@@ -79,21 +105,21 @@ sub startup {
         my %input = ( map { $_ => $input->{ $_ } } grep { defined $input->{ $_ } } keys %{ $input } );
            %input = ( %input, %args, %input ); # a bit of bloat that let's query-string and json vars override captures, e.g. /bucket/ayat/2?range=3-4 is the same as /bucket/ayat/2/3-4. useful for `POST /bucket/ayat => json => { surah => 2, range => [ 3, 4 ] }`
 
+        $self->debug( 'args', \%args );
+        $self->debug( 'input', \%input );
         $input->{ $_ } = $input{ $_ } for keys %input;
-        $input->{page} //= 0;
+        $input->{page} //= 1;
 
         $validation->input( $input );
         $validation->required( 'page' )->in( 1..604 );
-        return undef if $validation->has_error;
+        return 0 if $validation->has_error;
 
         my $output = $validation->output;
         my $stash = $c->stash;
            $stash->{args}{ $_ } = $output->{ $_ } for keys %{ $output };
         return 1;
     } );
-
-    $r->any( '/bucket/ayat/:surah/:range' )->over( _valid_ayat => $self->validator->validation )->to( controller => 'Bucket::Ayat', action => 'list', surah => undef, range => undef );
-    $r->any( '/bucket/page/:page' )->over( _valid_page => $self->validator->validation )->to( controller => 'Bucket::Page', action => 'list', page => undef );
+=cut
 
     $self->documentation( -root => '/docs' );
     $r->any( '/' )->to( cb => sub {
