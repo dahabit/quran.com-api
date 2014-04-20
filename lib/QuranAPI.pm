@@ -10,19 +10,19 @@ sub startup {
 
     options: {
         $r->get( '/options/default' )->to( cb => sub {
-            my $c = shift; $c->render( json => scalar $c->_options->default );
+            my $c = shift; my %args = $c->args; $c->render( json => scalar $c->_options->default( %args ) );
         } );
         $r->get( '/options/language' )->to( cb => sub {
-            my $c = shift; $c->render( json => scalar $c->_options->language );
+            my $c = shift; my %args = $c->args; $c->render( json => scalar $c->_options->language( %args ) );
         } );
         $r->get( '/options/quran' )->to( cb => sub {
-            my $c = shift; $c->render( json => scalar $c->_options->quran );
+            my $c = shift; my %args = $c->args; $c->render( json => scalar $c->_options->quran( %args ) );
         } );
         $r->get( '/options/content' )->to( cb => sub {
-            my $c = shift; $c->render( json => scalar $c->_options->content );
+            my $c = shift; my %args = $c->args; $c->render( json => scalar $c->_options->content( %args ) );
         } );
         $r->get( '/options/audio' )->to( cb => sub {
-            my $c = shift; $c->render( json => scalar $c->_options->audio );
+            my $c = shift; my %args = $c->args; $c->render( json => scalar $c->_options->audio( %args ) );
         } );
     };
 
@@ -31,95 +31,6 @@ sub startup {
 
     $r->any( $_ )->to( controller => 'Bucket::Page', action => 'list' )
         for qw|/bucket/page/:page /bucket/page|;
-=cut
-    # TODO: test the speed of this after caching is proper
-    use JSON::XS;
-    $self->renderer->add_handler( json => sub {
-        my ($renderer, $c, $output, $options) = @_;
-
-        $self->debug( 'json handler' );
-        $self->debug( 'options', $options );
-        $$output = JSON::XS->new
-            ->allow_blessed
-            ->allow_nonref
-            ->convert_blessed
-            ->relaxed
-            ->utf8
-            ->pretty( 0 )
-            ->encode( $options->{json} );
-
-        return 1;
-    } );
-
-    # TODO: validation has to happen in the controller, no pre-route validation because of mojolicious rendering bug
-    $r->add_condition( _valid_ayat => sub {
-        my ( $route, $c, $input, $validation ) = @_;
-        my %args = $c->args;
-        my %input = ( map { $_ => $input->{ $_ } } grep { defined $input->{ $_ } } keys %{ $input } );
-           %input = ( %input, %args, %input ); # a bit of bloat that let's query-string and json vars override captures, e.g. /bucket/ayat/2?range=3-4 is the same as /bucket/ayat/2/3-4. useful for `POST /bucket/ayat => json => { surah => 2, range => [ 3, 4 ] }`
-
-        $input->{ $_ } = $input{ $_ } for keys %input;
-        $input->{surah} //= 0;
-
-        $validation->input( $input );
-        $validation->required( 'surah' )->in( 1..114 );
-        return undef if $validation->has_error;
-
-        $input = $validation->input;
-
-        my $range = $self->cache( join( '.', qw/min max/, $input->{surah} ) => sub {
-            my $hash = $c->db->query( qq|
-                select min( ayah_num ) "min"
-                     , max( ayah_num ) "max"
-                  from quran.ayah
-                 where surah_id = ?
-            |, $input->{surah} )->hash; # TODO: db calls like this need to be cached
-            return $hash;
-        } );
-
-        $input->{range} //= [ $range->{min}, $range->{max} ]; # TODO: limits on max range if the calls take too long on 1..286 for example
-        $input->{range} = [ $1, $2 ] if not ref $input->{range}
-            and $input->{range} =~ qr/^(\d+)(?:\W+(\d+))?$/;
-
-        $validation->required( 'range' );
-
-        return undef
-        unless ref $input->{range} eq 'ARRAY'
-           and $input->{range}[0] >= $range->{min}
-           and $input->{range}[0] <= $range->{max};
-        $input->{range}[1] //= $input->{range}[0];
-        return undef
-        unless $input->{range}[1] >= $input->{range}[0]
-           and $input->{range}[1] >= $range->{min}
-           and $input->{range}[1] <= $range->{max};
-
-        my $output = $validation->output;
-        my $stash = $c->stash;
-           $stash->{args}{ $_ } = $output->{ $_ } for keys %{ $output };
-        return 1;
-    } );
-
-    $r->add_condition( _valid_page => sub {
-        my ( $route, $c, $input, $validation ) = @_;
-        my %args = $c->args;
-        my %input = ( map { $_ => $input->{ $_ } } grep { defined $input->{ $_ } } keys %{ $input } );
-           %input = ( %input, %args, %input ); # a bit of bloat that let's query-string and json vars override captures, e.g. /bucket/ayat/2?range=3-4 is the same as /bucket/ayat/2/3-4. useful for `POST /bucket/ayat => json => { surah => 2, range => [ 3, 4 ] }`
-
-        $self->debug( 'args', \%args );
-        $self->debug( 'input', \%input );
-        $input->{ $_ } = $input{ $_ } for keys %input;
-        $input->{page} //= 1;
-
-        $validation->input( $input );
-        $validation->required( 'page' )->in( 1..604 );
-        return 0 if $validation->has_error;
-
-        my $output = $validation->output;
-        my $stash = $c->stash;
-           $stash->{args}{ $_ } = $output->{ $_ } for keys %{ $output };
-        return 1;
-    } );
-=cut
 
     $self->documentation( -root => '/docs' );
     $r->any( '/' )->to( cb => sub {
@@ -145,6 +56,29 @@ sub setup {
     $self->plugin( 'Mojolicious::Plugin::CORS' );
 
     $self->plugin( 'QuranAPI::Options' );
+
+    render_error: {
+        $self->helper( render_error => sub {
+            my $c = shift;
+            my %error = @_;
+            my %param = map { $_ => delete $error{ $_ } } grep { defined $error{ $_ } } qw/code/;
+            do {
+                $param{code} = 422 if $error{type} eq 'validation';
+            } if $error{type};
+            $param{code} //= 500;
+            $c->stash->{render_error} = 1;
+            $c->res->code( $param{code} ) if $param{code};
+            return $c->render( json => { error => \%error } ) && die;
+        } );
+
+        $self->hook( around_dispatch => sub {
+            my ( $next, $c ) = @_;
+            local $SIG{__DIE__} = sub { ref $_[0] ? CORE::die( $_[0] ) : Mojo::Exception->throw( @_ ) };
+            do { # handle exception here
+                return if $c->stash->{render_error}; die $@;
+            } unless eval { $next->(); 1 }
+        } );
+    };
 
     $self->secrets( [ $self->config->{application}{secret} ] );
 

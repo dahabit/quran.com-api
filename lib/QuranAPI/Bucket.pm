@@ -22,13 +22,14 @@ sub keys_for_ayat {
 sub keys_for_page {
     my $self = shift;
     my ( $stash, %args ) = ( $self->stash, @_ );
-    my $keys = $self->cache( join( '.', qw/bucket keys for page/, $args{page} ) => sub {
+    my $keys = $self->cache( join( '.', qw/bucket keys for page/, $args{page}[0], $args{page}[1] ) => sub {
         my @keys = $self->db->query( qq|
             select a.ayah_key
               from quran.ayah a
-             where a.page_num = ?
+             where a.page_num >= ?
+               and a.page_num <= ?
              order by a.surah_id, a.ayah_num
-        |, $args{page} )->flat;
+        |, $args{page}[0], $args{page}[1] )->flat;
         return \@keys;
     } );
     return wantarray ? @{ $keys } : $keys;
@@ -47,10 +48,33 @@ sub bucket {
         my ( %hash );
         $hash{surah} = $surah;
         $hash{ayah} = $ayah;
-        $hash{language} = $vars{language};
-        $hash{audio} = 'TODO';
+        $hash{language} = $vars{language} if $vars{language};
+        TODO: {
+            $hash{TODO}{audio} = $vars{audio} if $vars{audio};
+        };
         push @list, \%hash;
     }
+
+    my %cache_opts;
+    dont_cache_weird_ranges: { # the math is weird here, but it basically checks if the request is "regular," i.e. pull ayat blocks of n size, e.g. 12 at a time, 20 at a time, etc.
+        my $do_not_cache = 0;
+        if ( $vars{surah} and $vars{range} ) { # ((min-1)%(max-min)) or max-min <= 50 && max == reallymax
+            my $max = $self->cache( join( '.', qw/max/, $vars{surah} ) => sub {
+                return $self->db->query( qq|
+                    select max( ayah_num ) "max"
+                      from quran.ayah
+                     where surah_id = ?
+                |, $vars{surah} )->list;
+            } );
+            $do_not_cache = !( !( ( $vars{range}[0] - 1 ) % ( $vars{range}[1] - $vars{range}[0] ) ) ||
+                                ( ( $vars{range}[1] - $vars{range}[0] ) <= 50 && $vars{range}[1] == $max ) ) ? 1 : 0;
+        }
+        elsif ( $vars{page} ) {
+            $do_not_cache = !( $vars{page}[0] == $vars{page}[1] ) ? 1 : 0;
+        }
+        $self->debug( 'do_not_cache? '. $do_not_cache );
+        $cache_opts{expires_in} = time - 1 if $do_not_cache;
+    };
 
     quran: { next unless defined $vars{quran};
         $rows{ 'resource.quran' } = $self->cache( join( '.', qw/resource quran/, $vars{quran} ) => sub {
@@ -75,9 +99,9 @@ sub bucket {
                 $join = "join $row->{type}.$row->{sub_type} c using ( resource_id )";
             }
 
-            if ( $row->{cardinality_type} eq '1_word' ) { # TODO
-                $rows{ 'result.quran' } = $self->cache( join( '.', '1_word', $vars{language}, $row->{resource_id}, @keys ) => sub {
-                    my %rows;
+            if ( $row->{cardinality_type} eq '1_word' ) {
+                my $result = $self->cache( join( '.', '1_word', $vars{language}, $row->{resource_id}, @keys ) => sub {
+                    my %result;
                     my %cut;
                     if ( $row->{slug} eq 'word_font' ) {
                         $cut{select} = qq|
@@ -114,7 +138,7 @@ sub bucket {
                         my %mash_key;
                            $mash_key{word}  = [ qw/id root lemma arabic translation/ ];
                            $mash_key{char}  = [ qw/id type code font/ ];
-                           $mash_key{image} = [ qw/id bloo blee blah/ ];
+                           $mash_key{image} = [ qw/id bloo blee blah/ ]; # TODO
 
                         for my $prefix ( keys %mash_key ) {
                             my ( @grep, %hash );
@@ -129,22 +153,18 @@ sub bucket {
                         }
 
                         delete $result->{position};
-                        push @{ $rows{ $ayah_key } }, $result;
+                        push @{ $result{ $ayah_key } }, $result;
                     }
-                    return \%rows;
-                } );
-
+                    return \%result;
+                }, %cache_opts ); # end cache
                 for my $i ( 0 .. $#keys ) {
                     my $ayah_key = $keys[ $i ];
-                    my $hash_ref = $list[ $i ];
-                    for my $result ( @{ $rows{ 'result.quran' }{ $ayah_key } } ) {
-                        push @{ $hash_ref->{quran} }, $result;
-                    }
+                    push @{ $rows{ 'result.quran' }{ $ayah_key } }, $result->{ $ayah_key } if $result->{ $ayah_key };
                 }
             }
             elsif ( $row->{cardinality_type} eq '1_ayah' ) {
-                $rows{ 'result.quran' } = $self->cache( join( '.', '1_ayah', $row->{resource_id}, @keys ) => sub {
-                    my %rows;
+                my $result = $self->cache( join( '.', '1_ayah', $row->{resource_id}, @keys ) => sub {
+                    my %result;
                     my @result = $self->db->query( qq|
                         select c.*
                           from content.resource r $join
@@ -156,65 +176,92 @@ sub bucket {
                     for my $result ( @result ) {
                         my $resource_id = delete $result->{resource_id};
                         my $ayah_key    = delete $result->{ayah_key};
-                        $rows{ $ayah_key } = $result;
+                        $result{ $ayah_key } = $result;
                     }
-                    return \%rows;
-                } );
+                    return \%result;
+                }, %cache_opts ); # end cache
                 for my $i ( 0 .. $#keys ) {
                     my $ayah_key = $keys[ $i ];
-                    my $hash_ref = $list[ $i ];
-                    if ( my $result = $rows{ 'result.quran' }{ $ayah_key } ) {
-                        $hash_ref->{quran} = $result;
-                    }
+                    push @{ $rows{ 'result.quran' }{ $ayah_key } }, $result->{ $ayah_key } if $result->{ $ayah_key };
                 }
+            }
+            for my $i ( 0 .. $#keys ) {
+                my $ayah_key = $keys[ $i ];
+                my $hash_ref = $list[ $i ];
+                $hash_ref->{quran} = shift @{ $rows{ 'result.quran' }{ $ayah_key } }; # should only be one in this array anyway
             }
         }
     }; # quran {}
 
     content: { next unless defined $vars{content};
-        $vars{content} = [ $vars{content} ] unless ref $vars{content};
-        $vars{content} = [ uniq @{ $vars{content} } ];
-
-        $rows{ 'resource.content' } = $self->db->query( qq|
-            select r.*
-              from content.resource r
-              join content.resource_api_version v using ( resource_id )
-             where r.is_available
-               and v.v2_is_enabled
-               and r.type = 'content'
-               and r.resource_id in ( |.( join ', ', map { '?' } @{ $vars{content} } ).qq| )
-             order by ( |.( join ', ', map { 'r.resource_id = ?' } @{ $vars{content} } ).qq| ) desc
-        |, ( @{ $vars{content} }, @{ $vars{content} } ) )->hashes;
+        $rows{ 'resource.content' } = $self->cache( join( '.', qw/resource content/, @{ $vars{content} } ) => sub {
+            return $self->db->query( qq|
+                select r.*
+                  from content.resource r
+                  join content.resource_api_version v using ( resource_id )
+                 where r.is_available
+                   and v.v2_is_enabled
+                   and r.type = 'content'
+                   and r.resource_id in ( |.( join ', ', map { '?' } @{ $vars{content} } ).qq| )
+                 order by ( |.( join ', ', map { 'r.resource_id = ?' } @{ $vars{content} } ).qq| ) desc
+            |, ( @{ $vars{content} }, @{ $vars{content} } ) )->hashes;
+        } );
 
         for my $row ( @{ $rows{ 'resource.content' } } ) {
             my $join;
-               if ( $row->{cardinality_type} eq 'n_ayah' ) {
+            if ( $row->{cardinality_type} eq 'n_ayah' ) {
                 $join = "join $row->{type}.$row->{sub_type} c using ( resource_id ) join $row->{type}.$row->{sub_type}_ayah n using ( $row->{sub_type}_id )";
-            }
-            elsif ( $row->{cardinality_type} eq '1_word' ) {
-                $join = "join $row->{type}.$row->{slug} c using ( resource_id )";
             }
             elsif ( $row->{cardinality_type} eq '1_ayah' ) {
                 $join = "join $row->{type}.$row->{sub_type} c using ( resource_id )";
             }
 
-               if ( $row->{cardinality_type} eq 'n_ayah' ) { # TODO
-            }
-            elsif ( $row->{cardinality_type} eq '1_word' ) { # TODO
+            if ( $row->{cardinality_type} eq 'n_ayah' ) {
+                my $result = $self->cache( join( '.', 'n_ayah', $row->{resource_id}, @keys ) => sub {
+                    my %result;
+                    my @result = $self->db->query( qq|
+                        select c.resource_id
+                             , a.ayah_key
+                             , concat( '/', concat_ws( '/', r.type, r.sub_type, c.$row->{sub_type}_id ) ) resource_url
+                          from content.resource r $join
+                          join quran.ayah a using ( ayah_key )
+                         where r.resource_id = ?
+                           and a.ayah_key in ( |.( join ', ', map { '?' } @keys ).qq| )
+                         order by a.surah_id, a.ayah_num
+                    |, $row->{resource_id}, @keys )->hashes;
+                    for my $result ( @result ) {
+                        my $resource_id = delete $result->{resource_id};
+                        my $ayah_key    = delete $result->{ayah_key};
+                        $result{ $ayah_key } = $result;
+                    }
+                    return \%result;
+                }, %cache_opts ); # end cache
+                for my $i ( 0 .. $#keys ) {
+                    my $ayah_key = $keys[ $i ];
+                    push @{ $rows{ 'result.content' }{ $ayah_key } }, $result->{ $ayah_key } if $result->{ $ayah_key };
+                }
             }
             elsif ( $row->{cardinality_type} eq '1_ayah' ) {
-                my @result = $self->db->query( qq|
-                    select c.*
-                      from content.resource r $join
-                      join quran.ayah a using ( ayah_key )
-                     where r.resource_id = ?
-                       and a.ayah_key in ( |.( join ', ', map { '?' } @keys ).qq| )
-                     order by a.surah_id, a.ayah_num
-                |, $row->{resource_id}, @keys )->hashes;
-                for my $result ( @result ) {
-                    my $resource_id = delete $result->{resource_id};
-                    my $ayah_key    = delete $result->{ayah_key};
-                    push @{ $rows{ 'result.content' }{ $ayah_key } }, $result;
+                my $result = $self->cache( join( '.', '1_ayah', $row->{resource_id}, @keys ) => sub {
+                    my %result;
+                    my @result = $self->db->query( qq|
+                        select c.*
+                          from content.resource r $join
+                          join quran.ayah a using ( ayah_key )
+                         where r.resource_id = ?
+                           and a.ayah_key in ( |.( join ', ', map { '?' } @keys ).qq| )
+                         order by a.surah_id, a.ayah_num
+                    |, $row->{resource_id}, @keys )->hashes;
+                    for my $result ( @result ) {
+                        my $resource_id = delete $result->{resource_id};
+                        my $ayah_key    = delete $result->{ayah_key};
+                        $result{ $ayah_key } = $result;
+                    }
+                    return \%result;
+                }, %cache_opts ); # end cache
+                for my $i ( 0 .. $#keys ) {
+                    my $ayah_key = $keys[ $i ];
+                    push @{ $rows{ 'result.content' }{ $ayah_key } }, $result->{ $ayah_key } if $result->{ $ayah_key };
                 }
             }
         }
@@ -229,7 +276,35 @@ sub bucket {
     }; # content {}
 
     return wantarray ? @list : \@list;
-};
+}
+
+sub validate_shared {
+    my ( $self, $vars ) = @_;
+    return $self->render_error( type => 'validation', message => "neither 'quran' nor 'content' parameters are set; see /options/quran and /options/content for valid id values" )
+    unless defined $vars->{quran}
+        or defined $vars->{content};
+
+    do {
+        my $type = $_;
+        my $val = $vars->{ $_ };
+        return $self->render_error( type => 'validation', message => "invalid '$type' parameter; see /options/$type for valid 'id' values" )
+            if defined $val and ( ref $val or not grep { $val eq $_ } map { $_->{id} } $self->_options->$type );
+    } for qw/quran audio language/;
+
+    if ( defined $vars->{content} ) {
+        $vars->{content} = [ split /\W+/, $vars->{content} ] unless ref $vars->{content};
+        return $self->render_error( type => 'validation', message => "invalid 'content' parameter (need a single integer id or an array of ids); see /options/content for valid 'id' values" )
+        unless ref $vars->{content} eq 'ARRAY' and scalar @{ $vars->{content} };
+        $vars->{content} = [ uniq @{ $vars->{content} } ];
+
+        do {
+            my $type = 'content';
+            my $val = $_;
+            return $self->render_error( type => 'validation', message => "invalid '$type' parameter; see /options/$type for valid 'id' values" )
+                if defined $val and ( ref $val or not grep { $val eq $_ } map { $_->{id} } $self->_options->$type );
+        } for @{ $vars->{content} };
+    }
+}
 
 # ABSTRACT: DNR principle
 1;

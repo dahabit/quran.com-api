@@ -89,7 +89,17 @@ sub language {
 =cut
 
 sub quran {
-    my $self = shift;
+    my ( $self, %args, %opts, @args, @opts ) = @_;
+    $opts{id} = "r.resource_id";
+    $opts{type} = "r.sub_type";
+    $opts{cardinality} = "r.cardinality_type";
+    $opts{language} = "r.language_code";
+    $opts{ $_ } = "r.$_" for qw/slug is_available description name/;
+    for my $key ( sort keys %opts ) {
+        next unless exists $args{ $key };
+        push @opts, $opts{ $key };
+        push @args, $args{ $key };
+    }
     my $list = $self->app->cache( join( '.', qw/options quran/ ) => sub {
         my $list = $self->app->db->query( qq|
             select r.resource_id id
@@ -103,9 +113,9 @@ sub quran {
               from content.resource r
               join content.resource_api_version v using ( resource_id )
              where r.type = 'quran'
-               and v.v2_is_enabled
+               and v.v2_is_enabled|.( !@opts ? '' : ' and '. join ' and ', map { "$_ = ?" } @opts ).qq|
              order by r.resource_id
-        | )->hashes;
+        |, @args )->hashes;
         return $list;
     } );
     return wantarray ? @{ $list } : $list;
