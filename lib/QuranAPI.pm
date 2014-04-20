@@ -26,6 +26,9 @@ sub startup {
         } );
     };
 
+    $r->get( $_ )->to( controller => 'Info::Surah', action => 'list' )
+        for qw|/info/surah/:surah /info/surah|;
+
     $r->any( $_ )->to( controller => 'Bucket::Ayat', action => 'list' )
         for qw|/bucket/ayat/:surah/:range /bucket/ayat/:surah /bucket/ayat|;
 
