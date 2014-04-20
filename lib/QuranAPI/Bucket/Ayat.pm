@@ -33,6 +33,7 @@ sub list {
 
         $vars{range} //= [ 1, $max <= 1 + 50 ? $max : 1 + 50 ];
         $vars{range} = [ $1, $2 || $1 ] if not ref $vars{range} and $vars{range} =~ qr/^(\d+)(?:\W+(\d+))?$/;
+        $vars{range}[1] = $max if ref $vars{range} eq 'ARRAY' and scalar @{ $vars{range} } eq 2 and defined $vars{range}[1] and $vars{range}[1] >= $max; # just so that we don't have range [ 252, 301 ] throwing an error
 
         return $self->render_error( type => 'validation', message => "range not set or invalid, use a string or an array (maximum 50 ayat per request), e.g. '1-3' or [ 1, 3 ]" )
         unless ref $vars{range} eq 'ARRAY'
