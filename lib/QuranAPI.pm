@@ -26,6 +26,8 @@ sub startup {
         } );
     };
 
+    $r->get( '/content/tafsir/:tafsir_id' )->to( controller => 'Content::Tafsir', action => 'hash' );
+
     $r->get( $_ )->to( controller => 'Info::Surah', action => 'list' )
         for qw|/info/surah/:surah /info/surah|;
 
