@@ -48,10 +48,6 @@ sub bucket {
         my ( %hash );
         $hash{surah} = $surah;
         $hash{ayah} = $ayah;
-        $hash{language} = $vars{language} if $vars{language};
-        TODO: {
-            $hash{TODO}{audio} = $vars{audio} if $vars{audio};
-        };
         push @list, \%hash;
     }
 
@@ -100,6 +96,7 @@ sub bucket {
             }
 
             if ( $row->{cardinality_type} eq '1_word' ) {
+                $vars{language} //= $self->_options->default->{language};
                 my $result = $self->cache( join( '.', '1_word', $vars{language}, $row->{resource_id}, @keys ) => sub {
                     my %result;
                     my %cut;
@@ -218,11 +215,11 @@ sub bucket {
 
             if ( $row->{cardinality_type} eq 'n_ayah' ) {
                 my $result = $self->cache( join( '.', 'n_ayah', $row->{resource_id}, @keys ) => sub {
-                    my %result;
+                    my %result; # TODO http://api.v2.quran.com/ should be in hard config or soft derived
                     my @result = $self->db->query( qq|
                         select c.resource_id
                              , a.ayah_key
-                             , concat( '/', concat_ws( '/', r.type, r.sub_type, c.$row->{sub_type}_id ) ) resource_url
+                             , concat( 'http://api.v2.quran.com/', concat_ws( '/', r.type, r.sub_type, c.$row->{sub_type}_id ) ) url
                           from content.resource r $join
                           join quran.ayah a using ( ayah_key )
                          where r.resource_id = ?
@@ -275,11 +272,53 @@ sub bucket {
         }
     }; # content {}
 
+    audio: { next unless defined $vars{audio};
+        my $result = $self->cache( join( '.', 'audio', $vars{audio}, @keys ) => sub {
+            my %result;
+            my @result = $self->db->query( qq|
+                select a.ayah_key
+                     , concat( 'http://audio.quran.com:9999/', concat_ws( '/', r.path, s.path, f.format, concat( replace( format('%3s', a.surah_id ), ' ', '0' ), replace( format('%3s', a.ayah_num ), ' ', '0' ), '.', f.format ) ) ) url
+                     , f.duration
+                     , f.mime_type
+                  from audio.file f
+                  join quran.ayah a using ( ayah_key )
+                  join audio.recitation t using ( recitation_id )
+                  join audio.reciter r using ( reciter_id )
+                  left join audio.style s using ( style_id )
+                 where t.recitation_id = ?
+                   and a.ayah_key in ( |.( join ', ', map { '?' } @keys ).qq| )
+                   and f.format = 'ogg'
+                 order by a.surah_id, a.ayah_num
+            |, $vars{audio}, @keys )->hashes;
+            for my $result ( @result ) {
+                my $ayah_key = delete $result->{ayah_key};
+                $result{ $ayah_key } = $result;
+            }
+            return \%result;
+        }, %cache_opts ); # end cache
+        for my $i ( 0 .. $#keys ) {
+            my $ayah_key = $keys[ $i ];
+            push @{ $rows{ 'result.audio' }{ $ayah_key } }, $result->{ $ayah_key } if $result->{ $ayah_key };
+        }
+        for my $i ( 0 .. $#keys ) { # this second for loop is redundant but for the sake of consistency w/ the other sections above maybe?
+            my $ayah_key = $keys[ $i ];
+            my $hash_ref = $list[ $i ];
+            $hash_ref->{audio} = shift @{ $rows{ 'result.audio' }{ $ayah_key } }; # should only be one
+        }
+    }; # audio {}
+
+    for my $i ( 0 .. $#keys ) {
+        my $ayah_key = $keys[ $i ];
+        my $hash_ref = $list[ $i ];
+           $hash_ref->{language} = $vars{language} if $vars{language};
+    }
+
     return wantarray ? @list : \@list;
 }
 
 sub validate_shared {
     my ( $self, $vars ) = @_;
+
     return $self->render_error( type => 'validation', message => "neither 'quran' nor 'content' parameters are set; see /options/quran and /options/content for valid id values" )
     unless defined $vars->{quran}
         or defined $vars->{content};

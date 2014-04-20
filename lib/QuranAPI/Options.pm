@@ -16,13 +16,16 @@ the "default" suggested options ( language, quran, content, audio )
 sub default {
     my $self = shift;
     my %hash;
-
     $hash{audio} = $self->app->cache( join( '.', qw/options default audio/ ) => sub {
         my $id = $self->app->db->query( qq|
-            select r.reciter_id id
-              from audio.reciter r
-             where english = ?
-        |, 'AbdulBaset AbdulSamad - Mujawwad' )->list; # TODO: normalize audio/reciter/recitation and use a slug instead -- b/c what happens if I change casing? ack
+            select t.recitation_id id
+              from audio.recitation t
+              join audio.reciter r using ( reciter_id )
+              left join audio.style s using ( style_id )
+             where t.is_enabled
+               and r.slug = 'abdulbaset'
+               and s.slug = 'mujawwad'
+        | )->list;
         return $id;
     } );
 
@@ -79,6 +82,21 @@ sub language {
              group by l.language_code, l.unicode, l.english, l.direction
              order by l.language_code
         | )->hashes;
+        for my $item ( @{ $list } ) {
+            my %mash;
+               $mash{name}    = [ qw/english unicode/ ];
+            for my $pfix ( keys %mash ) {
+                my ( @grep, %hash );
+                @grep = grep { $_ =~ /^${pfix}_/ } keys %{ $item };
+                for my $orig ( @grep ) {
+                    my $attr = $orig;
+                       $attr =~ s/^${pfix}_//;
+                    $hash{ $attr } = delete $item->{ $orig };
+                }
+                delete $hash{ $_ } for grep { not defined $hash{ $_ } } keys %hash;
+                $item->{ $pfix } = \%hash if keys %hash;
+            }
+        }
         return $list;
     } );
     return wantarray ? @{ $list } : $list;
@@ -158,13 +176,36 @@ sub audio {
     my $self = shift;
     my $list = $self->app->cache( join( '.', qw/options audio/ ) => sub {
         my $list = $self->app->db->query( qq|
-            select r.reciter_id id
-                 , concat( 'http://audio.quran.com:9999/', r.path, '/ogg/' ) base_url
-                 , r.arabic name_arabic
-                 , r.english name_english
-              from audio.reciter r
-             order by r.english
+            select t.recitation_id id
+                 , t.reciter_id
+                 , t.style_id
+                 , r.slug reciter_slug
+                 , s.slug style_slug
+                 , concat_ws( ' ', r.english, case when ( s.english is not null ) then concat( '(', s.english, ')' ) end ) name_english
+                 , concat_ws( ' ', r.arabic, case when ( s.arabic is not null ) then concat( '(', s.arabic, ')' ) end ) name_arabic
+              from audio.recitation t
+              join audio.reciter r using ( reciter_id )
+              left join audio.style s using ( style_id )
+             where t.is_enabled
+             order by r.english, s.english, t.recitation_id
         | )->hashes;
+        for my $item ( @{ $list } ) {
+            my %mash;
+               $mash{reciter} = [ qw/id slug/ ];
+               $mash{style}   = [ qw/id slug/ ];
+               $mash{name}    = [ qw/english arabic/ ];
+            for my $pfix ( keys %mash ) {
+                my ( @grep, %hash );
+                @grep = grep { $_ =~ /^${pfix}_/ } keys %{ $item };
+                for my $orig ( @grep ) {
+                    my $attr = $orig;
+                       $attr =~ s/^${pfix}_//;
+                    $hash{ $attr } = delete $item->{ $orig };
+                }
+                delete $hash{ $_ } for grep { not defined $hash{ $_ } } keys %hash;
+                $item->{ $pfix } = \%hash if keys %hash;
+            }
+        }
         return $list;
     } );
     return wantarray ? @{ $list } : $list;
