@@ -29,7 +29,6 @@ subtest '/options/quran: consistent data-structure' => sub {
     can_ok $tx->res, 'json';
     isa_ok $tx->res->json, 'ARRAY';
     do {
-        is $_->{language}, 'ar', "language => ar";
         $slug{ $_->{slug} } = 1;
     } for @{ $tx->res->json };
     ok exists $slug{ $_ }
