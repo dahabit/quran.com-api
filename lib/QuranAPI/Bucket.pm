@@ -54,7 +54,7 @@ sub bucket {
     my %cache_opts;
     dont_cache_weird_ranges: { # the math is weird here, but it basically checks if the request is "regular," i.e. pull ayat blocks of n size, e.g. 12 at a time, 20 at a time, etc.
         my $do_not_cache = 0;
-        if ( $vars{surah} and $vars{range} ) { # ((min-1)%(max-min)) or max-min <= 50 && max == reallymax
+        if ( $vars{surah} and $vars{range} ) { # ((min-1)%(max-min+1)) or max-min <= 50 && max == reallymax
             my $max = $self->cache( join( '.', qw/max/, $vars{surah} ) => sub {
                 return $self->db->query( qq|
                     select max( ayah_num ) "max"
@@ -62,7 +62,7 @@ sub bucket {
                      where surah_id = ?
                 |, $vars{surah} )->list;
             } );
-            $do_not_cache = !( !( ( $vars{range}[0] - 1 ) % ( $vars{range}[1] - $vars{range}[0] ) ) ||
+            $do_not_cache = !( !( ( $vars{range}[0] - 1 ) % ( $vars{range}[1] - $vars{range}[0] + 1 ) ) ||
                                 ( ( $vars{range}[1] - $vars{range}[0] ) <= 50 && $vars{range}[1] == $max ) ) ? 1 : 0;
         }
         elsif ( $vars{page} ) {

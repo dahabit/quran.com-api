@@ -31,7 +31,7 @@ sub list {
             |, $vars{surah} )->list;
         } );
 
-        $vars{range} //= [ 1, $max <= 1 + 50 ? $max : 1 + 50 ];
+        $vars{range} //= [ 1, $max <= 50 ? $max : 50 ];
         $vars{range} = [ $1, $2 || $1 ] if not ref $vars{range} and $vars{range} =~ qr/^(\d+)(?:\W+(\d+))?$/;
         $vars{range}[1] = $max if ref $vars{range} eq 'ARRAY' and scalar @{ $vars{range} } eq 2 and defined $vars{range}[1] and $vars{range}[1] >= $max; # just so that we don't have range [ 252, 301 ] throwing an error
 
@@ -45,7 +45,7 @@ sub list {
            and $vars{range}[1] >= 1
            and $vars{range}[0] <= $max
            and $vars{range}[1] <= $max
-           and $vars{range}[1] - $vars{range}[0] <= 50;
+           and $vars{range}[1] - $vars{range}[0] + 1 <= 50;
 
         $self->validate_shared( \%vars );
     };

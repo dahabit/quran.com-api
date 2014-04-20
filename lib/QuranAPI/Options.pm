@@ -123,7 +123,6 @@ sub quran {
             select r.resource_id id
                  , r.sub_type "type"
                  , r.cardinality_type cardinality
-                 , r.language_code "language"
                  , r.slug
                  , r.is_available
                  , r.description

@@ -108,16 +108,20 @@ v2 quran api; documentation is very poor and pretty much non-existent atm. be pa
 
 =head1 Endpoints
 
-=head2 using C</bucket> endpoints
+=head2 using C</bucket/*> and C</search> endpoints
 
-All C</bucket> endpoints take two kinds of parameters: a) specific and b) generic. The second kind, "generic"
-parameters, can get passed to any C</bucket> endpoint via either the query-string C<?quran=210&content=217,218>
-or ajax/post data, e.g.
+C</bucket/*> and C</search> endpoints take two kinds of parameters: a) shared parameters and b) route parameters.
+Shared parameters are  C<quran>, C<content>, C<audio> and C<language> and 
+can be passed to any C</bucket/*> or C</search> endpoint.
+These parameters are described via C</options/*>, e.g.
+C<audio> options are described at C<L</options/audio|http://api.v2.quran.com/options/audio>> and
+the C<id> property from one of these objects constitutes a valid value for this parameter.
+Set these via the query-string, e.g. C<?quran=210&content=217,218> or ajax/post data, e.g.
 
     jQuery.ajax( {
         url: 'http://api.v2.quran.com/bucket/page/1'
         ,type: 'POST'
-        ,data: JSON.stringify( { quran: 210, content: [ 217, 218 ] } )
+        ,data: JSON.stringify( { quran: 210, content: [ 217, 218 ] } ) // via ajax data
         ,dataType: 'json'
         ,contentType: 'application/json'
         ,crossDomain: true
@@ -128,14 +132,43 @@ or ajax/post data, e.g.
         console.debug( 'fail', arguments );
     } );
 
-Generic parameters include C<quran>, C<content>, C<audio> and C<language>. Valid values for each of these four
-types can be retrieved from their respective C</options> endpoint. For example, set the C<audio> parameter to correspond to
-the C<id> of any option at C<L</options/audio|http://api.v2.quran.com/options/audio>>. The only generic parameter which
-allows (and encourages) an array is C<content>. This is so that you can pull multiple translations (or transliterations or tafsir) at the same time.
+The only shared parameter which permits multiple selections (via an array) is the C<content> parameter.
+This is so that you can pull multiple translations (or transliterations or tafsir) at the same time.
 
-Specific parameters pertain and differ for each specific bucket endpoint and can be set via the route itself
-e.g. C</bucket/ayat/2/1-5> or via the query string, e.g. C</bucket/ayat?surah=2&range=1-5> or via ajax/post data.
-For example, the specific parameters on C</bucket/ayat> are C<surah> and C<range>, e.g.
+Route parameters are relevant only to the endpoint itself.
+For example, on C</bucket/ayat> route parameters are C<surah> and C<range>, making the accessible route C</button/ayat/:surah/:range>,
+and on C</bucket/page> the route parameter is C<page>, thus the accessible route is C</bucket/page/:page>.
+See L<the next section|http://api.v2.quran.com/docs#/bucket/ayat> for an example of route parameters.
+
+B<I<note>> that C</search> has not been implemented yet. 
+
+=head2 /bucket/ayat
+
+=over 4
+
+=item B<examples>
+
+=over 4
+
+=item C</bucket/ayat> I<surah 1, range 1..7>
+
+=item C</bucket/ayat/1> I<surah 1, range 1..7>
+
+=item C</bucket/ayat/2> I<surah 2, range 1..50 (B<50 ayat is the maximum range width>)>
+
+=item C</bucket/ayat/2/51-100> I<surah 2, range 51..100>
+
+=item C</bucket/ayat/2/251-300> I<surah 2, range 251..B<286>>
+
+=item C</bucket/ayat/2/255> I<surah 2, ayah 255>
+
+=item ...etc
+
+=back
+
+=back
+
+Route parameters are set via the url, e.g. C</bucket/ayat/2/1-5>, or via the query string, e.g. C</bucket/ayat?surah=2&range=1-5>, or via ajax/post data, e.g.
 
     jQuery.ajax( {
         url: 'http://api.v2.quran.com/bucket/ayat'
@@ -151,20 +184,58 @@ For example, the specific parameters on C</bucket/ayat> are C<surah> and C<range
         console.debug( 'fail', arguments );
     } );
 
-
-=head2 /bucket/ayat
-
-L<QuranAPI::Bucket::Ayat>
-
 =head2 /bucket/page
 
-L<QuranAPI::Bucket::Page>
+Takes the same shared parameters as C</bucket/ayat> (i.e. C<id> values from the C</options/*> endpoints), but returns ayat by page (range).
+
+=over 4
+
+=item B<examples>
+
+=over 4
+
+=item I<load page 293:>
+
+    jQuery.ajax( {
+        url: 'http://api.v2.quran.com/bucket/page/293'
+        ,type: 'POST'
+        ,data: JSON.stringify( { quran: 254 } )
+        ,dataType: 'json'
+        ,contentType: 'application/json'
+        ,crossDomain: true
+        ,headers: { 'X-Requested-With': 'jQuery' }
+    } ).done( function ( r ) {
+        console.dir( r );
+    } ).fail( function ( ) {
+        console.debug( 'fail', arguments );
+    } );
+
+=item I<load page 291 to 295 (B<5 pages is the maximum width>):>
+
+    jQuery.ajax( {
+        url: 'http://api.v2.quran.com/bucket/page/291-295'
+        ,type: 'POST'
+        ,data: JSON.stringify( { quran: 210 } )
+        ,dataType: 'json'
+        ,contentType: 'application/json'
+        ,crossDomain: true
+        ,headers: { 'X-Requested-With': 'jQuery' }
+    } ).done( function ( r ) {
+        console.dir( r );
+    } ).fail( function ( ) {
+        console.debug( 'fail', arguments );
+    } );
+
+
+=back
+
+=back
 
 =head2 /options/default
 
 Returns an options hash of suggested defaults to pass into any C</bucket/*> endpoint or the C</search> endpoint.
-Passing in these options in alongside any endpoint-specific parameters to one of the afore-mentioned endpoints
-will return an array of similarly keyed hashes; e.g. if you pass in
+Passing in these parameters instructs the endpoint to fetch the specified resource(s) for each ayah in range. The result is an array of hashes, keyed similarly but valued with the resource content.
+For example, if you pass in
 
     {
         language: 'en'
@@ -187,17 +258,102 @@ to C</bucket/page/1>, you'll get an array of ayat that resemble:
 
 =head2 /options/quran
 
+=over 4
+
+=item B<I<TODO>>
+
+=over 4
+
+=item describe the C<type> property
+
+=over 4
+
+=item describe C<type B<image>>
+
+=item describe C<type B<text>>
+
+=item describe C<type B<font>>
+
+=back
+
+=item describe the C<slug> property
+
+=over 4
+
+=item describe C<slug B<word_font>>
+
+=item describe C<slug B<ayah_image>>
+
+=item describe C<slug B<ayah_text_regular>>
+
+=item describe C<slug B<ayah_text_minimal>>
+
+=item describe C<slug B<word_image_tajweed>> - I<currently unavailable>
+
+=item describe C<slug B<word_image_regular>> - I<currently unavailable>
+
+=back
+
+
+=item describe the C<is_available> property
+
+=item describe the C<cardinality> property and how it affects the resource data structure
+
+=over 4
+
+=item describe C<cardinality B<1_ayah>>
+
+=item describe C<cardinality B<1_word>>
+
+=item describe C<cardinality B<n_ayah>>
+
+=back
+
+=back
+
+=back
+
 =head2 /options/content
+
+similar to C</options/quran>
 
 =head2 /options/language
 
+=over 4
+
+=item B<I<TODO>>
+
+=over 4
+
+=item describe how this affects C<quran> options with C<1_word cardinality>.
+
+=back
+
+=back
+
 =head2 /options/audio
+
+straightforward
 
 =head2 /info/surah
 
+straightforward - C</info/surah> or C</info/surah/:surah> routes work (former lists all surah objects in an array, latter returns a single hash)
+
 =head2 /content/tafsir
 
-=head1 TODO
+=over 4
+
+=item B<I<TODO>>
+
+=over 4
+
+=item explain this!
+
+=back
+
+=back
+
+=head1 B<TODO> B<I<not yet developed>>
 
 =head2 /info/ayah
 
