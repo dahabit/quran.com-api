@@ -66,13 +66,16 @@ here's a cheap jQuery example until code starts to mature (still very much a WIP
 
     $.ajax( {
         url: 'http://api.v2.quran.com/bucket/ayat'
-        ,type: 'POST'
+        ,type: 'OPTIONS'
         ,contentType: 'application/json'
+        ,headers: { 'X-Requested-With': 'jQuery' }
         ,dataType: 'json'
         ,crossDomain: true
         ,data: JSON.stringify( { surah: 2, range: [1,4], audio: 5, content: [ 215 ], quran: 254 } )
     } ).done( function ( r ) {
-        c.dir( r );
+        console.dir( r );
+    } ).fail( function ( ) {
+        console.debug( 'fail', arguments );
     } );
 
 You can also try it via a GET to http://api.v2.quran.com/bucket/ayat/2/1-4?audio=5&content=215&quran=254

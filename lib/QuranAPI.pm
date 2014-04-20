@@ -102,17 +102,88 @@ __END__
 
 =encoding utf8
 
-=head1 USAGE
+=head1 Usage
 
 v2 quran api; documentation is very poor and pretty much non-existent atm. be patient.
 
-=head2 /search
+=head1 Endpoints
 
-=head2 /bucket/ayat/:surah/:range
+=head2 using C</bucket> endpoints
 
-=head2 /bucket/page/:page
+All C</bucket> endpoints take two kinds of parameters: a) specific and b) generic. The second kind, "generic"
+parameters, can get passed to any C</bucket> endpoint via either the query-string C<?quran=210&content=217,218>
+or ajax/post data, e.g.
+
+    jQuery.ajax( {
+        url: 'http://api.v2.quran.com/bucket/page/1'
+        ,type: 'POST'
+        ,data: JSON.stringify( { quran: 210, content: [ 217, 218 ] } )
+        ,dataType: 'json'
+        ,contentType: 'application/json'
+        ,crossDomain: true
+        ,headers: { 'X-Requested-With': 'jQuery' }
+    } ).done( function ( r ) {
+        console.dir( r );
+    } ).fail( function ( ) {
+        console.debug( 'fail', arguments );
+    } );
+
+Generic parameters include C<quran>, C<content>, C<audio> and C<language>. Valid values for each of these four
+types can be retrieved from their respective C</options> endpoint. For example, set the C<audio> parameter to correspond to
+the C<id> of any option at C<L</options/audio|http://api.v2.quran.com/options/audio>>. The only generic parameter which
+allows (and encourages) an array is C<content>. This is so that you can pull multiple translations (or transliterations or tafsir) at the same time.
+
+Specific parameters pertain and differ for each specific bucket endpoint and can be set via the route itself
+e.g. C</bucket/ayat/2/1-5> or via the query string, e.g. C</bucket/ayat?surah=2&range=1-5> or via ajax/post data.
+For example, the specific parameters on C</bucket/ayat> are C<surah> and C<range>, e.g.
+
+    jQuery.ajax( {
+        url: 'http://api.v2.quran.com/bucket/ayat'
+        ,type: 'POST'
+        ,data: JSON.stringify( { surah: 2, range: [1, 5], quran: 210 } )
+        ,dataType: 'json'
+        ,contentType: 'application/json'
+        ,crossDomain: true
+        ,headers: { 'X-Requested-With': 'jQuery' }
+    } ).done( function ( r ) {
+        console.dir( r );
+    } ).fail( function ( ) {
+        console.debug( 'fail', arguments );
+    } );
+
+
+=head2 /bucket/ayat
+
+L<QuranAPI::Bucket::Ayat>
+
+=head2 /bucket/page
+
+L<QuranAPI::Bucket::Page>
 
 =head2 /options/default
+
+Returns an options hash of suggested defaults to pass into any C</bucket/*> endpoint or the C</search> endpoint.
+Passing in these options in alongside any endpoint-specific parameters to one of the afore-mentioned endpoints
+will return an array of similarly keyed hashes; e.g. if you pass in
+
+    {
+        language: 'en'
+        ,quran: 210
+        ,content: 217
+        ,audio: 1
+    }
+
+to C</bucket/page/1>, you'll get an array of ayat that resemble:
+
+    [ {
+        surah: 1
+        ,ayah: 1
+        ,language: 'en'
+        ,quran: ...
+        ,content: ...
+        ,audio: ...
+    }, { surah: 1, ayah: 2, ... }, { ... }, { ... }, { ... }, { ... }, { ... } ]
+
 
 =head2 /options/quran
 
@@ -122,10 +193,16 @@ v2 quran api; documentation is very poor and pretty much non-existent atm. be pa
 
 =head2 /options/audio
 
+=head2 /info/surah
+
+=head2 /content/tafsir
+
+=head1 TODO
+
 =head2 /info/ayah
 
 =head2 /info/page
 
-=head2 /info/surah
+=head2 /search
 
 =cut
