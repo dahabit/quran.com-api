@@ -37,11 +37,7 @@ sub startup {
     $r->any( $_ )->to( controller => 'Bucket::Page', action => 'list' )
         for qw|/bucket/page/:page /bucket/page|;
 
-    $self->documentation( -root => '/docs' );
-    $r->any( '/' )->to( cb => sub {
-        my $c = shift;
-        $c->redirect_to( $self->url_for( 'documentation' ) );
-    } );
+    $r->any( '/' )->to( controller => 'Documentation', action => 'index', template => 'index' );
 }
 
 sub setup {
@@ -53,7 +49,6 @@ sub setup {
         , -silence => 1
     } );
     $self->plugin( 'Mojolicious::Plugin::Nour::Database' );
-    $self->plugin( 'Mojolicious::Plugin::Documentation' );
     $self->plugin( 'Mojolicious::Plugin::DumpyLog' );
     $self->plugin( 'Mojolicious::Plugin::CacheMoney' );
     $self->plugin( 'Mojolicious::Plugin::Args' );
@@ -86,6 +81,11 @@ sub setup {
     };
 
     $self->secrets( [ $self->config->{application}{secret} ] );
+
+    documentation: {
+        push @{ $self->renderer->paths }, $self->path( qw/documentation template/ );
+        push @{ $self->static->paths },   $self->path( qw/documentation public/ );
+    };
 
     setup_assurance: {
         my $mode = $self->mode;

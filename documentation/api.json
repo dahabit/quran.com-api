@@ -1,0 +1,574 @@
+{
+  "communities": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      },
+      "by_market": {
+        "type": "integer",
+        "description": "The market id associated with the community"
+      }
+    }
+  },
+  "data_entry_forms": {
+    "title": "Forms <small>Data Entry</small>"
+  },
+  "data_entry_sub_types": {
+    "title": "Sub Types <small>Data Entry</small>"
+  },
+  "data_entry_types": {
+    "title": "Types <small>Data Entry</small>"
+  },
+  "events": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      },
+      "min_event_at": {
+        "type": "datetime",
+        "description": "Returns only events happening after the given date. Date in ISO 8601 format (<pre>%Y-%m-%dT%H:%M:%S%:z</pre>)"
+      }
+    }
+  },
+  "games": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      }
+    },
+    "post": {
+      "home_id": {
+        "type": "integer",
+        "description": "The id of the associated home team",
+        "required": true
+      },
+      "away_id": {
+        "type": "integer",
+        "description": "The id of the associated away team",
+        "required": true
+      },
+      "sport_id": {
+        "type": "integer",
+        "description": "The id of the associated sport",
+        "required": true
+      },
+      "sport_season_id": {
+        "type": "integer",
+        "description": "The id of the associated sport season"
+      }
+    }
+  },
+  "game_outcomes": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      }
+    },
+    "post": {
+      "name": {
+        "type": "string",
+        "required": true,
+        "description": "The name of the outcome"
+      },
+      "value": {
+        "type": "string",
+        "required": true,
+        "description": "The value of the outcome"
+      }
+    }
+  },
+  "markets": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      }
+    }
+  },
+  "organizations": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      },
+      "by_community": {
+        "type": "integer",
+        "description": "The community id associated with the organization"
+      },
+      "by_region": {
+        "type": "integer",
+        "description": "The region id associated with the organization"
+      },
+      "by_market": {
+        "type": "integer",
+        "description": "The market id associated with the organization"
+      },
+      "by_package": {
+        "type": "integer",
+        "description": "The package id associated with the organization"
+      },
+      "by_type": {
+        "type": "integer",
+        "description": "The type id associated with the organization"
+      },
+      "with_stories_min_published_at": {
+        "type": "datetime",
+        "description": "Filter organizations that have stories published after the given date. Date in ISO 8601 format (<pre>%Y-%m-%dT%H:%M:%S%:z</pre>)"
+      },
+      "with_events_min_event_at": {
+        "type": "datetime",
+        "description": "Filter organizations that have events happening after the given date. Date in ISO 8601 format (<pre>%Y-%m-%dT%H:%M:%S%:z</pre>)"
+      }
+    },
+    "post": {
+      "name": {
+        "type": "string",
+        "description": "The name of the organization",
+        "required": true
+      },
+      "lat": {
+        "type": "float",
+        "description": "The latitude of the organization"
+      },
+      "lon": {
+        "type": "float",
+        "description": "The longitude of the organization"
+      },
+      "address": {
+        "type": "string",
+        "description": "The address where organization is located"
+      },
+      "city": {
+        "type": "string",
+        "description": "The city where organization is located"
+      },
+      "state": {
+        "type": "string",
+        "description": "The state where organization is located"
+      },
+      "zip": {
+        "type": "string",
+        "description": "The zip code of the organization"
+      },
+      "community_id": {
+        "type": "integer",
+        "description": "The id of the community associated with the organization"
+      },
+      "type_id": {
+        "type": "integer",
+        "description": "The id of the type associated with the organization"
+      },
+      "org_site": {
+        "type": "string",
+        "description": "The site url of the organization"
+      },
+      "phone": {
+        "type": "string",
+        "description": "The phone number of the organization"
+      },
+      "facebook": {
+        "type": "string",
+        "description": "The facebook page url of the organization"
+      },
+      "twitter": {
+        "type": "string",
+        "description": "The twitter url of the organization"
+      },
+      "description": {
+        "type": "string",
+        "description": "The description of the organization"
+      },
+      "parent_id": {
+        "type": "string",
+        "description": "The id of the other organization associated with the organization"
+      },
+      "general_email": {
+        "type": "string",
+        "description": "The email of the organization"
+      },
+      "aliases": {
+        "type": "string",
+        "description": "The aliases of the organization"
+      },
+      "data_attributes": {
+        "type": "array",
+        "description": "An array of extra information associated with the organization. The format is: <pre>[{ \"name\" => \"foo\", \"value\" => \"bar\" }, { \"name\" => \"baz\", \"value\" => \"qwe\" }]</pre>"
+      },
+      "person_ids": {
+        "type": "array",
+        "description": "An array of person ids associated with the organization"
+      }
+    }
+  },
+  "organization_types": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      }
+    }
+  },
+  "people": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      },
+      "by_organization": {
+        "type": "integer",
+        "description": "The organization id associated with the person"
+      }
+    },
+    "post": {
+      "name": {
+         "type": "string",
+         "description": "The name of the person",
+         "required": true
+      },
+      "email": {
+        "type": "string",
+        "description": "The email of the person"
+      },
+      "zip": {
+        "type": "string",
+        "description": "The zip code of the person"
+      },
+      "exported_at": {
+        "type": "datetime",
+        "description": "The date person was exported in ISO 8601 format (<pre>%Y-%m-%dT%H:%M:%S%:z</pre>)",
+        "required": true
+      },
+      "type_id": {
+        "type": "integer",
+        "description": "The id of the type associated with the person"
+      },
+      "lat": {
+        "type": "float",
+        "description": "The latitude of the person"
+      },
+      "lon": {
+        "type": "float",
+        "description": "The longitude of the person"
+      },
+      "community_id": {
+        "type": "integer",
+        "description": "The id of the community associated with the person"
+      },
+      "address": {
+        "type": "string",
+        "description": "The address where person is located"
+      },
+      "state": {
+        "type": "string",
+        "description": "The state where person is located"
+      },
+      "city": {
+        "type": "string",
+        "description": "The city where person is located"
+      },
+      "description": {
+        "type": "string",
+        "description": "The description of the person"
+      },
+      "short_description": {
+        "type": "string",
+        "description": "The short description of the person"
+      },
+      "title": {
+        "type": "string",
+        "description": "The title of the person"
+      },
+      "country": {
+        "type": "string",
+        "description": "The country code of the person"
+      },
+      "phone": {
+        "type": "string",
+        "description": "The phone number of the person"
+      }
+    }
+  },
+  "rosters": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      }
+    },
+    "post": {
+      "position": {
+        "type": "string",
+        "description": "Position of the player",
+        "required": true
+      },
+      "year": {
+        "type": "string",
+        "description": "Year of the player",
+        "required": true
+      },
+      "height": {
+        "type": "string",
+        "description": "Height of the player"
+      },
+      "weight": {
+        "type": "string",
+        "description": "Weight of the player"
+      },
+      "team_id": {
+        "type": "integer",
+        "description": "The team associated with the player",
+        "required": true
+      },
+      "person_id": {
+        "type": "integer",
+        "description": "Id of the person player represents",
+        "required": true
+      },
+      "graduated_year": {
+        "type": "string",
+        "description": "Year the player graduated"
+      },
+      "sport_id": {
+        "type": "integer",
+        "description": "Id of the sport player is playing",
+        "required": true
+      },
+      "sport_season_id": {
+        "type": "integer",
+        "description": "Id of the sport season"
+      },
+      "external_source": {
+        "type": "string",
+        "description": "String used to identify the source of the player's information"
+      },
+      "external_id": {
+        "type": "integer",
+        "description": "Any identifier to track the player id in the external source"
+      }
+    }
+  },
+  "roster_outcomes": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      }
+    },
+    "post": {
+      "game_id": {
+        "type": "integer",
+        "description": "The id of the game associated with the outcome"
+      },
+      "name": {
+        "type": "string",
+        "description": "The name of the outcome"
+      },
+      "value": {
+        "type": "string",
+        "description": "The value of the outcome"
+      }
+    }
+  },
+  "sports": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      }
+    },
+    "post": {
+      "name": {
+        "type": "string",
+        "description": "The name of the sport",
+        "required": true
+      },
+      "level": {
+        "type": "string",
+        "description": "The level of the sport"
+      }
+    }
+  },
+  "story_types": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      },
+      "with_stories": {
+        "type": "boolean",
+        "description": "Return only types that have stories associated with"
+      }
+    },
+    "post": {
+      "name": {
+        "type": "string",
+        "description": "The name of the story type",
+        "required": true
+      },
+      "slug": {
+        "type": "string",
+        "description": "The slug of the story type"
+      }
+    }
+  },
+  "stories": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      },
+      "order": {
+        "type": "string",
+        "description": "A comma-separated string with field and sort direction, i.e: created_at,asc. Default: <pre>published_at,desc</pre>"
+      },
+      "by_author": {
+        "type": "string",
+        "description": "The author of the story"
+      },
+      "by_community": {
+        "type": "string",
+        "description": "The community slug associated with the story"
+      },
+      "by_type": {
+        "type": "string",
+        "description": "The type slug associated with the story. Accepts a comma-separated list of slugs"
+      },
+      "by_organization": {
+        "type": "string",
+        "description": "The organization id associated with the story"
+      },
+      "min_published_at": {
+        "type": "datetime",
+        "description": "The minimum date for the published story in ISO 8601 format (<pre>%Y-%m-%dT%H:%M:%S%:z</pre>)"
+      }
+    },
+    "post": {
+      "organization_ids": {
+        "type": "array",
+        "description": "An array of organization ids associted with the story",
+        "required": true
+      },
+      "community_id": {
+        "type": "integer",
+        "description": "The ID of the community associated with the story",
+        "required": true
+      },
+      "type_id": {
+        "type": "integer",
+        "description": "The ID of the type associated with the story",
+        "required": true
+      },
+      "headline": {
+        "type": "string",
+        "description": "The headline of the story",
+        "required": true
+      },
+      "author": {
+        "type": "string",
+        "description": "The name (and email) of the author of the story",
+        "required": true
+      },
+      "teaser": {
+        "type": "string",
+        "description": "The teaser of the story"
+      },
+      "body": {
+        "type": "string",
+        "description": "The content of the story",
+        "required": true
+      },
+      "external_debug": {
+        "type": "string",
+        "description": "An string used to store debugging information"
+      },
+      "external_source": {
+        "type": "string",
+        "description": "An string used to identify the source of the story"
+      },
+      "published": {
+        "type": "boolean",
+        "description": "Flag telling story should be published or not. Default: <pre>false</pre>"
+      },
+      "published_at": {
+        "type": "datetime",
+        "description": "The date story was published in ISO 8601 format (<pre>%Y-%m-%dT%H:%M:%S%:z</pre>). Default: <pre>now</pre>"
+      }
+    }
+  },
+  "teams": {
+    "get": {
+      "page": {
+        "type": "integer",
+        "description": "The number of the page to load. Default: <pre>1</pre>"
+      },
+      "per_page": {
+        "type": "integer",
+        "description": "The number of items to return in one page. Default: <pre>50</pre>"
+      }
+    },
+    "post": {
+      "name": {
+        "type": "string",
+        "description": "The name of the team",
+        "required": true
+      }
+    }
+  },
+  "users": {}
+}
