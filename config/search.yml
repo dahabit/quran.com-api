@@ -1,0 +1,29 @@
+---
+option:
+    getopts:
+        - clear
+        - create
+        - update:s@
+        - index:s@
+        - search
+    default:
+index:
+    quran:
+        setting:
+        mapping:
+            ayah:
+                _source: { enabled: false }
+                properties:
+                    index:  { type: integer, index: not_analyzed }
+                    surah:  { type: integer, index: not_analyzed }
+                    ayah:   { type: integer, index: not_analyzed }
+                    page:   { type: integer, index: not_analyzed }
+                    juz:    { type: integer, index: not_analyzed }
+                    hizb:   { type: integer, index: not_analyzed }
+                    rub:    { type: integer, index: not_analyzed }
+                    sajdah: { type: string,  index: not_analyzed }
+                    key:    { type: string,  index: not_analyzed }
+            quran:
+                _parent: { type: ayah }
+            content:
+                _parent: { type: ayah }
