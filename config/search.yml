@@ -1,15 +1,23 @@
 ---
 option:
     getopts:
-        - clear
-        - create
+        - create|recreate
         - update:s@
-        - index:s@
-        - search
+        - type:s
+        - subtype|sub-type:s
+        - resource_type|resource-type:s
+        - resource_sub_type|resource-sub-type|resource-subtype:s
     default:
 index:
     quran:
         setting:
+            analysis:
+                analyzer:
+                    example:
+                        type: custom
+                        tokenizer: whitespace
+                        filter: [ trim ]
+                        char_filter: [ html_strip ]
         mapping:
             ayah:
                 _source: { enabled: false }
@@ -23,7 +31,29 @@ index:
                     rub:    { type: integer, index: not_analyzed }
                     sajdah: { type: string,  index: not_analyzed }
                     key:    { type: string,  index: not_analyzed }
-            quran:
+            quran.text:
                 _parent: { type: ayah }
-            content:
+                _routing: { required: true, path: key }
+                properties:
+                    text: { type: string, boost: 1 }
+            quran.lemma:
                 _parent: { type: ayah }
+                _routing: { required: true, path: key }
+                properties:
+                    text: { type: string, boost: 0.145455 }
+            quran.root:
+                _parent: { type: ayah }
+                _routing: { required: true, path: key }
+                properties:
+                    text: { type: string, boost: 0.0909091 }
+            content.translation:
+                _parent: { type: ayah }
+                _routing: { required: true, path: key }
+            content.transliteration:
+                _parent: { type: ayah }
+                _routing: { required: true, path: key }
+                properties:
+                    text: { type: string, analyzer: example }
+            content.tafsir:
+                _parent: { type: ayah }
+                _routing: { required: true, path: key }

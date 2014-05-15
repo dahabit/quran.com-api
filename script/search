@@ -16,59 +16,100 @@ BEGIN {
     use ElasticSearch;
     use Time::HiRes qw/gettimeofday tv_interval/;
     use Encode qw/encode_utf8 decode_utf8/;
+    use Math::Round qw/:all/;
+    use List::Util qw/max min/;
 
     sub run {
         my $self = shift;
+        my $opts = $self->option;
+
+        return $self->search( q => @ARGV ? join ' ', @ARGV : undef )
+        unless grep { defined $opts->{ $_ } } qw/create update/;
+
+        return $self->create if $opts->{create};
+
         do {
-            $self->create;
-            $self->index;
-        } if $self->option->{create};
-        $self->search if $self->option->{search};
+            $opts->{update_}{ $_ } = 1 for @{ $opts->{update} };
+            $opts->{update} = delete $opts->{update_};
+            return $self->update;
+        } if $opts->{update};
     }
 
     sub search {
-        my ( $self, %args, %stat, %query, $query, $result ) = @_;
+        my ( $self, %args ) = @_;
+#        my ( $size, %opts ) = ( 1000000, %{ $self->option } );
+        my ( $size, %opts ) = ( 6236 * 50, %{ $self->option } );
+        my ( %stat, %query, %match, $result );
+        my ( %hits, %score, %time );
+        my ( @type, $factor );
 
-        $self->info( 'index settings', $self->es->index_settings( index => [ 'quran' ] ) );
+        $self->es->index_settings( index => [ 'quran' ] ); # <-- init a connection via any function so stats don't include connect-to-backend time
 
-        if ( scalar @ARGV eq 2 and $ARGV[0] eq 'type' ) {
-            $query->{term}{type} = $ARGV[1];
+        push @type, 'content.translation' unless scalar grep { defined } map { $opts{ $_ } } qw/resource_type resource_sub_type/;
+        unless ( @type ) {
+            if ( $opts{resource_type} and not $opts{resource_sub_type} ) {
+                if ( $opts{resource_type} eq 'quran' ) {
+                    push @type, "quran.$_" for qw/text lemma root/;
+                    $factor = 1;
+                }
+                elsif ( $opts{resource_type} eq 'content' ) {
+                    push @type, "content.$_" for qw/translation transliteration tafsir/;
+                }
+            }
+            else {
+                push @type, "$opts{resource_type}.$opts{resource_sub_type}";
+            }
         }
-        else {
-            $query->{match}{text} = join ' ', @ARGV if @ARGV;
-            $query->{match}{text} //= 'allah';
-            $query->{match}{text} = decode_utf8 $query->{match}{text};
-        }
 
-        my $mapping = 'content';
+        $factor //= 1 / scalar @type;
+        $args{q} //= 'allah' if scalar @type eq 1 and $type[0] eq 'content.translation';
 
-        $query{bool}{must} = {
-            has_child => {
-                score_type => 'sum'
-                ,query => $query
-                ,type => $mapping
+        return $self->warn( "no query given" ) unless $args{q};
+        $args{q} = decode_utf8( $args{q} );
+        push @{ $match{bool}{must} }, { match => { text => $args{q} } };
+
+        %query = ();
+        $query{bool}{must} = [];
+        push @{ $query{bool}{must} }, {
+            bool => {
+                should => []
+                ,boost => 0
             }
         };
+        push @{ $query{bool}{must}[0]{bool}{should} }, {
+            has_child => {
+                type => $_
+                ,query => \%match
+                ,score_type => 'sum'
+            }
+        } for @type;
 
-        @{ $stat{time} } = gettimeofday;
+        @{ $stat{when} } = gettimeofday;
         $result = $self->es->search(
             index => 'quran'
             ,type => 'ayah'
             ,query => \%query
-            ,size => 99
+            ,size => $size
         );
-        $stat{took} = tv_interval $stat{time};
-        $self->debug( "result ayah: $stat{took} seconds", $result );
+        $stat{time} = sprintf '%.3f ms', tv_interval( $stat{when} ) * 1000;
+
+        return $self->warn( 'no hits', \%query ) if scalar @{ $result->{hits}{hits} } eq 0;
+
+        $self->info( "PARENT:" ) for 1..2;
+        $self->info( "PARENT:", $result );
+
+        ( $score{parent}, $hits{parent}, $time{parent} ) = ( 0, 0, $stat{time} );
+        $score{parent} += $_ for map { $_->{_score} } @{ $result->{hits}{hits} };
+        $hits{parent}++ for @{ $result->{hits}{hits} };
 
         %query = ();
         $query{bool}{must} = [];
-        $query{bool}{must}[0] = {
+        $query{bool}{must}[ $_ ] = {
             bool => {
-                minimum_should_match => 1
-                ,should => []
+                should => []
                 ,boost => 0
             }
-        };
+        } for 0..1;
         push @{ $query{bool}{must}[0]{bool}{should} }, {
             term => {
                 _parent => {
@@ -76,345 +117,432 @@ BEGIN {
                 }
             }
         } for @{ $result->{hits}{hits} };
-        push @{ $query{bool}{must} }, $query;
+        for my $string ( @type ) {
+            my ( $type, $sub_type ) = split /\./, $string;
+            push @{ $query{bool}{must}[1]{bool}{should} }, {
+                bool => {
+                    must => [ {
+                        term => {
+                            type => {
+                                value => $type
+                            }
+                        }
+                    }, {
+                        term => {
+                            sub_type => {
+                                value => $sub_type
+                            }
+                        }
+                    } ]
+                }
+            };
+        }
+        push @{ $query{bool}{must} }, \%match;
 
-        @{ $stat{time} } = gettimeofday;
+        my $routing = [ map { $_->{_id} } @{ $result->{hits}{hits} } ];
+
+        @{ $stat{when} } = gettimeofday;
         $result = $self->es->search(
             index => 'quran'
-            ,type => $mapping
-            ,query => \%query
-            ,size => 99
+            ,query => {
+                function_score => {
+                    boost_factor => $factor
+                    ,query => \%query
+                }
+            }
+            ,size => 999999
+            ,routing => $routing
         );
-        $stat{took} = tv_interval $stat{time};
-        $self->debug( "result content: $stat{took} seconds", $result );
-        $self->debug( "result query:", encode_utf8( $query->{match}{text} ) );
-        $self->debug( "result source:", encode_utf8( $result->{hits}{hits}[0]{_source}{text} ) );
+        $stat{time} = sprintf '%.3f ms', tv_interval( $stat{when} ) * 1000;
+        return $self->warn( 'no hits', \%query ) if scalar @{ $result->{hits}{hits} } eq 0;
+        $self->info( "CHILD:" ) for 1..2;
+        $self->info( "CHILD:", $result );
+        $self->debug( "SEARCH:", sprintf( "% 8s", "query " ) . encode_utf8( $args{q} ) );
+        do {
+            $self->debug( "SOURCE:", sprintf( "% 8s", "$result->{hits}{hits}[ $_ ]{_source}{key} " ) . encode_utf8( $result->{hits}{hits}[ $_ ]{_source}{text} ) ) for 0 .. min( scalar @{ $result->{hits}{hits} } - 1, int $size - 1 );
+        } if scalar @{ $result->{hits}{hits} };
 
-        my ( $sum, $cnt );
-        $sum += $_ for map { $_->{_score} } @{ $result->{hits}{hits} };
-        $cnt++ for @{ $result->{hits}{hits} };
-        $self->debug( "result content: cnt $cnt, sum $sum" );
+        ( $score{child}, $hits{child}, $time{child} ) = ( 0, 0, $stat{time} );
+        $score{child} += $_ for map { $_->{_score} } @{ $result->{hits}{hits} };
+        $hits{child}++ for @{ $result->{hits}{hits} };
+
+        $score{ $_ } = sprintf( "% 7.3f", nearest( .001, $score{ $_ } ) ) for qw/parent child/;
+        $time{ $_ } = sprintf( "% 9.3f", nearest( .001, $time{ $_ } ) ) for qw/parent child/;
+        $time{total} = sprintf( "% 9.3f", $time{parent} + $time{child} );
+        $time{ $_ } .= ' ms' for keys %time;
+        $hits{ $_ } = sprintf( "% 5d", $hits{ $_ } ) for qw/parent child/;
+
+        my $pdebug = "PARENT HITS $hits{parent}     SCORE $score{parent}         TIME $time{parent}" if $hits{parent} and $score{parent};
+        my $cdebug = " CHILD HITS $hits{child}     SCORE $score{child}         TIME $time{child}" if $hits{child} and $score{child};
+        my $tdebug = "TOTAL TIME $time{total}" if $time{total};
+           $tdebug = join( ' ', map { '' } 0 .. max( length $pdebug, length $cdebug ) - length $tdebug ) . $tdebug;
+
+        $self->debug( $pdebug ) if $pdebug;
+        $self->debug( $cdebug ) if $cdebug;
+        $self->debug( $tdebug ) if $tdebug;
     }
 
     sub create {
-        my ( $self, %args, %conf ) = @_;
+        my ( $self, %args ) = @_;
+        my ( %conf ) = ( %{ $self->config } );
 
-        %conf = %{ $self->config };
+        $self->es->delete_index(
+            index => [ 'quran' ]
+            , ignore_missing => 1
+        );
+        $self->es->create_index(
+            index => 'quran'
+            , settings => $conf{index}{quran}{setting}
+            , mappings => $conf{index}{quran}{mapping}
+        );
 
-        for my $index ( keys %{ $conf{index} } ) {
-            $self->es->delete_index(
-                index => [ $index ]
-                , ignore_missing => 1
-            );
+        $self->debug( 'index settings', $self->es->index_settings( index => [ 'quran' ] ) );
 
-            $self->es->create_index(
-                index => $index
-                , settings => $conf{index}{ $index }{setting}
-                , mappings => $conf{index}{ $index }{mapping}
-            );
-
-            $self->debug( 'index_settings', $self->es->index_settings( index => [ $index ] ) );
-        }
+        $self->index;
     }
 
-    # TODO: evaluate usefulness of a "factor" index for custom scoring
+    sub update {
+        my ( $self, %args ) = @_;
+        my ( %conf ) = ( %{ $self->config } );
+        my ( %opts ) = ( %{ $self->option } );
+
+        $self->es->close_index( index => 'quran' );
+        $self->es->update_index_settings(
+            index => 'quran'
+            ,settings => $conf{index}{quran}{setting}
+        );
+        $self->es->clear_cache( index => 'quran' );
+        $self->es->open_index( index => 'quran' );
+
+        for my $type ( keys %{ $opts{update} } ) {
+            $self->info( "updating $type mapping" );
+
+            $self->es->delete_mapping(
+                index => 'quran'
+                ,type => $type
+                ,ignore_missing => 1
+            );
+            $self->es->put_mapping(
+                index => 'quran'
+                ,type => $type
+                ,mapping => $conf{index}{quran}{mapping}{ $type }
+                ,ignore_conflicts => 1
+            );
+
+            $self->debug( "$type mapping:", $self->es->mapping( index => 'quran', type => $type ) );
+        }
+
+        $self->index;
+
+        $self->es->optimize_index(
+            index => 'quran'
+            ,flush => 1
+            ,refresh => 1
+        );
+    }
 
     sub index {
         my ( $self, %args ) = @_;
+        my ( %opts ) = ( %{ $self->option } );
 
         my ( @result, @action );
+        my ( $limit, $offset ) = ( 6236, 0 );
 
         ayah: {
-            @result = @{ $self->db->query( qq|
-                select a.ayah_index "index"
-                     , a.surah_id surah
-                     , a.ayah_num ayah
-                     , a.sajdah sajdah
-                     , a.page_num page
-                     , a.juz_num juz
-                     , a.hizb_num hizb
-                     , a.rub_num rub
-                     , a.ayah_key "key"
-                  from quran.ayah a
-                 order by a.surah_id, a.ayah_num
-            | )->hashes };
-
-            @action = ();
-
-            for my $result ( @result ) {
-                my %result;
-                   $result{id}   = $result->{key};
-                   $result{data} = $result;
-                push @action, { index => \%result };
-            }
-
-            $self->debug( 'result[0]', $result[0] );
-
-            $self->es->bulk(
-                index => 'quran'
-                ,type => 'ayah'
-                ,actions => \@action
-            );
+            next unless $opts{create} or $opts{update}{ayah};
+            $offset = 0;
+            pass: while ( 1 ) {
+                @action = ();
+                @result = @{ $self->db->query( qq|
+                    select a.ayah_index "index"
+                         , a.surah_id surah
+                         , a.ayah_num ayah
+                         , a.sajdah sajdah
+                         , a.page_num page
+                         , a.juz_num juz
+                         , a.hizb_num hizb
+                         , a.rub_num rub
+                         , a.ayah_key "key"
+                      from quran.ayah a
+                     order by a.surah_id, a.ayah_num
+                     limit $limit offset |. $limit * $offset++ .qq|
+                | )->hashes };
+                last pass unless @result;
+                for my $result ( @result ) {
+                    my %result;
+                       $result{id}   = $result->{key};
+                       $result{data} = $result;
+                    push @action, { index => \%result };
+                }
+                $self->bulk( \@action, type => 'ayah' );
+            };
         }; # ayah: {}
 
         quran: {
             text: {
-                @result = $self->db->query( qq|
-                    select concat_ws( ':', 'quran', 'text', r.resource_id, 'ayah', a.ayah_key ) id
-                         , a.ayah_key "key"
-                         , r.resource_id
-                         , r.sub_type "type"
-                         , r.slug
-                         , case when v.v2_is_enabled and r.is_available then true else false end "public"
-                         , t.text
-                         , 1 factor
-                      from content.resource r
-                      join content.resource_api_version v using ( resource_id )
-                      join quran.text t using ( resource_id )
-                      join quran.ayah a using ( ayah_key )
-                     where r.type = 'quran'
-                       and r.sub_type = 'text'
-                        -- extra filter to reduce overhead
-                    -- and a.surah_id = 114
-                        -- extra filter to reduce overhead
-                     order by a.surah_id, a.ayah_num, r.resource_id
-                | )->hashes;
-
-                @action = ();
-
-                for my $result ( @result ) {
-                    my %result;
-                       $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
-                       $result{parent} = $result->{key};
-                       $result{id}     = delete $result->{id};
-                       $result{data}   = $result;
-                    push @action, { index => \%result };
-                }
-
-                $self->debug( 'result[0]', $result[0] );
-
-                $self->es->bulk(
-                    index => 'quran'
-                    ,type => 'quran'
-                    ,actions => \@action
-                );
+                next unless $opts{create} or $opts{update}{ 'quran.text' };
+                $offset = 0;
+                pass: while ( 1 ) {
+                    @action = ();
+                    @result = $self->db->query( qq|
+                        select concat_ws( ':', 'quran', 'text', r.resource_id, 'ayah', a.ayah_key ) id
+                             , a.ayah_key "key"
+                             , r.resource_id
+                             , r.type
+                             , r.sub_type
+                             , r.slug
+                             , case when v.v2_is_enabled and r.is_available then true else false end "public"
+                             , t.text
+                             , 1 factor
+                          from content.resource r
+                          join content.resource_api_version v using ( resource_id )
+                          join quran.text t using ( resource_id )
+                          join quran.ayah a using ( ayah_key )
+                         where r.type = 'quran'
+                           and r.sub_type = 'text'
+                            -- extra filter to reduce overhead
+                        -- and a.surah_id = 114
+                            -- extra filter to reduce overhead
+                         order by a.surah_id, a.ayah_num, r.resource_id
+                         limit $limit offset |. $limit * $offset++ .qq|
+                    | )->hashes;
+                    last pass unless @result;
+                    for my $result ( @result ) {
+                        my %result;
+                           $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
+                           $result{parent} = $result->{key};
+                           $result{id}     = delete $result->{id};
+                           $result{data}   = $result;
+                        push @action, { index => \%result };
+                    }
+                    $self->bulk( \@action, type => 'quran.text' );
+                };
             }; # text: {}
 
             root: {
-                @result = $self->db->query( qq|
-                    select concat_ws( ':', 'quran', 'root', 'ayah', a.ayah_key ) id
-                         , a.ayah_key "key"
-                         , 'root' "type"
-                         , false public
-                         , 1 factor
-                         , string_agg( coalesce( c.value, concat( 'wo', w.text, 'rd' ) ), ' ' order by w.position ) "text"
-                      from quran.word w
-                      join quran.ayah a using ( ayah_key )
-                      left join corpus.root c using ( root_id )
-                     group by a.ayah_key
-                     order by a.surah_id, a.ayah_num
-                | )->hashes;
-
-                @action = ();
-
-                for my $result ( @result ) {
-                    my %result;
-                       $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
-                       $result{parent} = $result->{key};
-                       $result{id}     = delete $result->{id};
-                       $result{data}   = $result;
-                    push @action, { index => \%result };
-                }
-
-                $self->debug( 'result[0]', $result[0] );
-
-                $self->es->bulk(
-                    index => 'quran'
-                    ,type => 'quran'
-                    ,actions => \@action
-                );
+                next unless $opts{create} or $opts{update}{ 'quran.root' };
+                $offset = 0;
+                pass: while ( 1 ) {
+                    @action = ();
+                    @result = $self->db->query( qq|
+                        select concat_ws( ':', 'quran', 'root', 'ayah', a.ayah_key ) id
+                             , a.ayah_key "key"
+                             , 'quran' "type"
+                             , 'root' "sub_type"
+                             , false public
+                             , 1 factor
+                             , string_agg( coalesce( c.value, concat( 'wo', w.text, 'rd' ) ), ' ' order by w.position ) "text"
+                          from quran.word w
+                          join quran.ayah a using ( ayah_key )
+                          left join corpus.root c using ( root_id )
+                         group by a.ayah_key
+                         order by a.surah_id, a.ayah_num
+                         limit $limit offset |. $limit * $offset++ .qq|
+                    | )->hashes;
+                    last pass unless @result;
+                    for my $result ( @result ) {
+                        my %result;
+                           $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
+                           $result{parent} = $result->{key};
+                           $result{id}     = delete $result->{id};
+                           $result{data}   = $result;
+                        push @action, { index => \%result };
+                    }
+                    $self->bulk( \@action, type => 'quran.root' );
+                };
             }; # root: {}
 
             lemma: {
-                @result = $self->db->query( qq|
-                    select concat_ws( ':', 'quran', 'lemma', 'ayah', a.ayah_key ) id
-                         , a.ayah_key "key"
-                         , 'lemma' "type"
-                         , false public
-                         , 1 factor
-                         , string_agg( coalesce( c.value, concat( 'wo', w.text, 'rd' ) ), ' ' order by w.position ) "text"
-                      from quran.word w
-                      join quran.ayah a using ( ayah_key )
-                      left join corpus.lemma c using ( lemma_id )
-                     group by a.ayah_key
-                     order by a.surah_id, a.ayah_num
-                | )->hashes;
-
-                @action = ();
-
-                for my $result ( @result ) {
-                    my %result;
-                       $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
-                       $result{parent} = $result->{key};
-                       $result{id}     = delete $result->{id};
-                       $result{data}   = $result;
-                    push @action, { index => \%result };
-                }
-
-                $self->debug( 'result[0]', $result[0] );
-
-                $self->es->bulk(
-                    index => 'quran'
-                    ,type => 'quran'
-                    ,actions => \@action
-                );
+                next unless $opts{create} or $opts{update}{ 'quran.lemma' };
+                $offset = 0;
+                pass: while ( 1 ) {
+                    @action = ();
+                    @result = $self->db->query( qq|
+                        select concat_ws( ':', 'quran', 'lemma', 'ayah', a.ayah_key ) id
+                             , a.ayah_key "key"
+                             , 'quran' "type"
+                             , 'lemma' "sub_type"
+                             , false public
+                             , 1 factor
+                             , string_agg( coalesce( c.value, concat( 'wo', w.text, 'rd' ) ), ' ' order by w.position ) "text"
+                          from quran.word w
+                          join quran.ayah a using ( ayah_key )
+                          left join corpus.lemma c using ( lemma_id )
+                         group by a.ayah_key
+                         order by a.surah_id, a.ayah_num
+                         limit $limit offset |. $limit * $offset++ .qq|
+                    | )->hashes;
+                    last pass unless @result;
+                    for my $result ( @result ) {
+                        my %result;
+                           $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
+                           $result{parent} = $result->{key};
+                           $result{id}     = delete $result->{id};
+                           $result{data}   = $result;
+                        push @action, { index => \%result };
+                    }
+                    $self->bulk( \@action, type => 'quran.lemma' );
+                };
             }; # lemma: {}
         }; # quran: {}
 
         content: {
             translation: {
-                @result = $self->db->query( qq|
-                    select concat_ws( ':', 'content', 'translation', r.resource_id, 'ayah', a.ayah_key ) id
-                         , a.ayah_key "key"
-                         , r.resource_id
-                         , r.sub_type "type"
-                         , r.slug
-                         , r.language_code "language"
-                         , case when v.v2_is_enabled and r.is_available then true else false end "public"
-                         , t.text
-                         , 1 factor
-                        from content.resource r
-                        join content.resource_api_version v using ( resource_id )
-                        join content.translation t using ( resource_id )
-                        join quran.ayah a using ( ayah_key )
-                       where r.type = 'content'
-                         and r.sub_type = 'translation'
-                          -- extra filter to reduce overhead
-                      -- and r.language_code = 'en'
-                      -- and a.surah_id = 114
-                          -- extra filter to reduce overhead
-                       order by a.surah_id, a.ayah_num, r.resource_id
-                | )->hashes;
-
-                @action = ();
-
-                for my $result ( @result ) {
-                    my %result;
-                       $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
-                       $result{parent} = $result->{key};
-                       $result{id}     = delete $result->{id};
-                       $result{data}   = $result;
-                    push @action, { index => \%result };
-                }
-
-                $self->debug( 'result[0]', $result[0] );
-
-                $self->es->bulk(
-                    index => 'quran'
-                    ,type => 'content'
-                    ,actions => \@action
-                );
+                next unless $opts{create} or $opts{update}{ 'content.translation' };
+                $offset = 0;
+                pass: while ( 1 ) {
+                    @action = ();
+                    @result = $self->db->query( qq|
+                        select concat_ws( ':', 'content', 'translation', r.resource_id, 'ayah', a.ayah_key ) id
+                             , a.ayah_key "key"
+                             , r.resource_id
+                             , r.type
+                             , r.sub_type
+                             , r.slug
+                             , r.language_code "language"
+                             , case when v.v2_is_enabled and r.is_available then true else false end "public"
+                             , t.text
+                             , 1 factor
+                            from content.resource r
+                            join content.resource_api_version v using ( resource_id )
+                            join content.translation t using ( resource_id )
+                            join quran.ayah a using ( ayah_key )
+                           where r.type = 'content'
+                             and r.sub_type = 'translation'
+                              -- extra filter to reduce overhead
+                          -- and r.language_code = 'en'
+                          -- and a.surah_id = 114
+                              -- extra filter to reduce overhead
+                           order by a.surah_id, a.ayah_num, r.resource_id
+                           limit $limit offset |. $limit * $offset++ .qq|
+                    | )->hashes;
+                    last pass unless @result;
+                    for my $result ( @result ) {
+                        my %result;
+                           $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
+                           $result{parent} = $result->{key};
+                           $result{id}     = delete $result->{id};
+                           $result{data}   = $result;
+                        push @action, { index => \%result };
+                    }
+                    $self->bulk( \@action, type => 'content.translation' );
+                };
             }; # translation: {}
 
             transliteration: {
-                @result = $self->db->query( qq|
-                    select concat_ws( ':', 'content', 'transliteration', r.resource_id, 'ayah', a.ayah_key ) id
-                         , a.ayah_key "key"
-                         , r.resource_id
-                         , r.sub_type "type"
-                         , r.slug
-                         , r.language_code "language"
-                         , case when v.v2_is_enabled and r.is_available then true else false end "public"
-                         , t.text
-                         , 1 factor
-                        from content.resource r
-                        join content.resource_api_version v using ( resource_id )
-                        join content.transliteration t using ( resource_id )
-                        join quran.ayah a using ( ayah_key )
-                       where r.type = 'content'
-                         and r.sub_type = 'transliteration'
-                          -- extra filter to reduce overhead
-                      -- and r.language_code = 'en'
-                      -- and a.surah_id = 114
-                          -- extra filter to reduce overhead
-                       order by a.surah_id, a.ayah_num, r.resource_id
-                | )->hashes;
-
-                @action = ();
-
-                for my $result ( @result ) {
-                    my %result;
-                       $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
-                       $result{parent} = $result->{key};
-                       $result{id}     = delete $result->{id};
-                       $result{data}   = $result;
-                    push @action, { index => \%result };
-                }
-
-                $self->debug( 'result[0]', $result[0] );
-
-                $self->es->bulk(
-                    index => 'quran'
-                    ,type => 'content'
-                    ,actions => \@action
-                );
+                next unless $opts{create} or $opts{update}{ 'content.transliteration' };
+                $offset = 0;
+                pass: while ( 1 ) {
+                    @action = ();
+                    @result = $self->db->query( qq|
+                        select concat_ws( ':', 'content', 'transliteration', r.resource_id, 'ayah', a.ayah_key ) id
+                             , a.ayah_key "key"
+                             , r.resource_id
+                             , r.type
+                             , r.sub_type
+                             , r.slug
+                             , r.language_code "language"
+                             , case when v.v2_is_enabled and r.is_available then true else false end "public"
+                             , t.text
+                             , 1 factor
+                            from content.resource r
+                            join content.resource_api_version v using ( resource_id )
+                            join content.transliteration t using ( resource_id )
+                            join quran.ayah a using ( ayah_key )
+                           where r.type = 'content'
+                             and r.sub_type = 'transliteration'
+                              -- extra filter to reduce overhead
+                          -- and r.language_code = 'en'
+                          -- and a.surah_id = 114
+                              -- extra filter to reduce overhead
+                           order by a.surah_id, a.ayah_num, r.resource_id
+                           limit $limit offset |. $limit * $offset++ .qq|
+                    | )->hashes;
+                    last pass unless @result;
+                    for my $result ( @result ) {
+                        my %result;
+                           $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
+                           $result{parent} = $result->{key};
+                           $result{id}     = delete $result->{id};
+                           $result{data}   = $result;
+                        push @action, { index => \%result };
+                    }
+                    $self->bulk( \@action, type => 'content.transliteration' );
+                };
             }; # transliteration: {}
 
             tafsir: {
-                @result = $self->db->query( qq|
-                    select s.*
-                         , c.factor
-                      from ( select concat_ws( ':', 'content', 'tafsir', t.tafsir_id, 'ayah', a.ayah_key ) id
-                       , a.ayah_key "key"
-                       , r.resource_id
-                       , t.tafsir_id
-                       , r.sub_type "type"
-                       , r.slug
-                       , r.language_code "language"
-                         , case when v.v2_is_enabled and r.is_available then true else false end "public"
-                       , t.text
-                    from content.resource r
-                    join content.resource_api_version v using ( resource_id )
-                    join content.tafsir t using ( resource_id )
-                    join content.tafsir_ayah ta using ( tafsir_id )
-                    join quran.ayah a using ( ayah_key )
-                   where r.type = 'content'
-                     and r.sub_type = 'tafsir'
-                      -- extra filter to reduce overhead
-                  -- and r.language_code = 'ar'
-                  -- and a.surah_id = 114
-                      -- extra filter to reduce overhead
-                   order by a.surah_id, a.ayah_num, t.tafsir_id ) s
-                    join ( select ta.tafsir_id
-                       , count( distinct a.ayah_key ) factor
-                    from content.tafsir_ayah ta
-                    join quran.ayah a using ( ayah_key )
-                   group by ta.tafsir_id ) c using ( tafsir_id )
-                   order by s.resource_id, s.key
-                | )->hashes;
-
-                @action = ();
-
-                for my $result ( @result ) {
-                    my %result;
-                       $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
-                       $result{parent} = $result->{key};
-                       $result{id}     = delete $result->{id};
-                       $result{data}   = $result;
-                    push @action, { index => \%result };
-                }
-
-                $self->debug( 'result[0]', $result[0] );
-
-                $self->es->bulk(
-                    index => 'quran'
-                    ,type => 'content'
-                    ,actions => \@action
-                );
+                next unless $opts{create} or $opts{update}{ 'content.tafsir' };
+                $offset = 0;
+                pass: while ( 1 ) {
+                    @action = ();
+                    @result = $self->db->query( qq|
+                        select s.*
+                             , c.factor
+                          from ( select concat_ws( ':', 'content', 'tafsir', t.tafsir_id, 'ayah', a.ayah_key ) id
+                           , a.ayah_key "key"
+                           , r.resource_id
+                           , t.tafsir_id
+                           , r.sub_type "type"
+                           , r.slug
+                           , r.language_code "language"
+                             , case when v.v2_is_enabled and r.is_available then true else false end "public"
+                           , t.text
+                        from content.resource r
+                        join content.resource_api_version v using ( resource_id )
+                        join content.tafsir t using ( resource_id )
+                        join content.tafsir_ayah ta using ( tafsir_id )
+                        join quran.ayah a using ( ayah_key )
+                       where r.type = 'content'
+                         and r.sub_type = 'tafsir'
+                          -- extra filter to reduce overhead
+                      -- and r.language_code = 'ar'
+                      -- and a.surah_id = 114
+                          -- extra filter to reduce overhead
+                       order by a.surah_id, a.ayah_num, t.tafsir_id ) s
+                        join quran.ayah a on a.ayah_key = s.key
+                        join ( select ta.tafsir_id
+                           , count( distinct a.ayah_key ) factor
+                        from content.tafsir_ayah ta
+                        join quran.ayah a using ( ayah_key )
+                       group by ta.tafsir_id ) c using ( tafsir_id )
+                       order by a.surah_id, a.ayah_num, s.resource_id, s.tafsir_id
+                       limit $limit offset |. $limit * $offset++ .qq|
+                    | )->hashes;
+                    last pass unless @result;
+                    for my $result ( @result ) {
+                        my %result;
+                           $result->{text} = decode_utf8 encode_utf8 $result->{text} if length $result->{text} < bytes::length $result->{text};
+                           $result{parent} = $result->{key};
+                           $result{id}     = delete $result->{id};
+                           $result{data}   = $result;
+                        push @action, { index => \%result };
+                    }
+                    $self->bulk( \@action, type => 'content.tafsir' );
+                };
             }; # tafsir: {}
-
         }; # content: {}
+    }
 
+    sub bulk {
+        my ( $self, $bulk, %args ) = @_;
+        my ( $n_last, $n_current );
+        $n_last = scalar @{ $bulk } / 100;
+        $n_last += 1 unless $n_last eq int $n_last;
+        $n_last = int $n_last;
+        bulk: while ( scalar @{ $bulk } ) {
+            $self->debug( "bulk $args{type} ". ++$n_current .' of '. $n_last .' ('. scalar @{ $bulk } .')' );
+            my @bulk;
+            block: for ( 1..100 ) {
+                last block unless scalar @{ $bulk };
+                push @bulk, shift @{ $bulk };
+            }
+            $self->es->bulk(
+                actions => \@bulk
+                ,index => 'quran'
+                , %args
+            );
+        };
     }
 
     has es => (
@@ -423,7 +551,7 @@ BEGIN {
         ,default => sub { new ElasticSearch (
             transport => 'http'
             ,servers => '127.0.0.1:9200'
-            ,timeout => 1800
+            ,timeout => 7200
             ,no_refresh => 1
         ) }
         ,lazy => 1
